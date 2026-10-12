@@ -89,3 +89,11 @@ def test_documentation_centre_metadata_fields():
     assert 'No module docstring provided.' in page
     assert 'No docstring provided.' in page
     assert 'f.parameters' in page
+
+
+def test_documentation_centre_class_and_route_sections():
+    page = TestClient(app).get("/").text
+    assert 'id="classes"' in page
+    assert 'id="routes"' in page
+    assert 'report.api_routes' in page
+    assert 'report.classes' in page
