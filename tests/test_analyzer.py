@@ -96,3 +96,12 @@ def test_module_import_cycle_detected(tmp_path):
     report = analyze(tmp_path)
     assert ["a.py", "b.py"] in report["module_import_cycles"]
     assert report["summary"]["module_import_cycles"] == 1
+
+
+def test_documentation_metadata(tmp_path):
+    (tmp_path / 'sample.py').write_text('"""Module description."""\ndef main(name: str) -> str:\n    """Return name."""\n    return name\n', encoding='utf-8')
+    report = analyze(tmp_path)
+    assert report['modules'][0]['docstring'] == 'Module description.'
+    assert report['functions'][0]['parameters'] == ['name']
+    assert report['functions'][0]['returns'] == 'str'
+    assert report['functions'][0]['docstring'] == 'Return name.'
