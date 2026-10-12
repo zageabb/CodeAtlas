@@ -81,3 +81,11 @@ def test_multihop_tracing_and_cycle_documentation_ui():
     assert "selectedNeighborhood=new Set([selected])" in page
     assert "Module import cycles" in page
     assert "Function call cycles" in page
+
+
+def test_documentation_centre_metadata_fields():
+    page = TestClient(app).get('/').text
+    assert 'id="modules"' in page
+    assert 'No module docstring provided.' in page
+    assert 'No docstring provided.' in page
+    assert 'f.parameters' in page
