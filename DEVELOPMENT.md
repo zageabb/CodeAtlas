@@ -62,6 +62,15 @@
 - Follow-up: include pinned scanned Git SHA in reports, resolve imported symbols more precisely, and expand highlighting to multi-hop paths.
 - Avoid interpreting module imports as proof of runtime execution.
 
+### Cycle detection and tracing iteration (2026-10-12)
+- Added Tarjan-style strongly-connected component detection for resolved function calls and internal module imports.
+- Exposed function_cycles and module_import_cycles in the JSON report and summary.
+- Added multi-hop tracing selector (1/2/3/all) for function-level dependency exploration.
+- Included detected cycles in Markdown documentation export.
+- Added focused regression tests for simple call cycles, import cycles and UI selector presence.
+- Limitations: cycles reflect *resolved* relationships only; false or missing call resolutions affect results. Multi-hop tracing follows edges in both directions for exploration, not execution sequencing.
+- Next: graph cycle highlighting, runtime/browser interaction tests, analysis provenance (commit SHA), and scalable graph layout.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
