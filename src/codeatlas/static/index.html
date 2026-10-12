@@ -106,7 +106,14 @@ function detail(f){
  const dt=el('dt',{},label),dd=el('dd',{},value);d.append(dt,dd);
  }
  for(const [label,values] of [['Called by',(report.calls||[]).filter(e=>e.target===f.id).map(e=>e.source)],['Calls',(report.calls||[]).filter(e=>e.source===f.id).map(e=>e.target)]]){
- d.append(el('dt',{},label),el('dd',{},values.join('\n')||'No direct relationships recorded'));
+ d.append(el('dt',{},label));const dd=el('dd');
+ if(!values.length)dd.textContent='No direct relationships recorded';
+ for(const id of values){
+ const link=el('button',{type:'button',class:'relation'},id);
+ link.addEventListener('click',()=>{const target=report.functions.find(item=>item.id===id);
+ if(target){activeModule=target.path;renderTree();detail(target);fitGraph()}});
+ dd.append(link)}
+ d.append(dd);
  }
  renderGraph();
 }
