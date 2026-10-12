@@ -27,6 +27,15 @@
 - Packaged frontend HTML inside the Python distribution, with the FastAPI root serving this asset.
 - Added route/UI regression tests. Production hardening and CI verification remain pending.
 
+### Explorer navigation iteration (2026-10-12)
+- Added project-file navigator alongside relationship map and function inspector.
+- Module selection filters the graph to one Python file, with a resettable "All modules" selection.
+- Fit-to-view adjusts initial zoom based on function count and viewport.
+- Callers/callees in the function inspector navigate directly to the target function and module.
+- Added regression test asserting navigation controls are served.
+- JavaScript/browser interaction and GitHub CI remain to be verified in a live run.
+- Future: actual dependency-aware layout, function/source grouping and better handling of large graphs.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
