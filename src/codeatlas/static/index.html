@@ -13,7 +13,7 @@ button.secondary{background:#25384f;color:#e7edf7}button:disabled{opacity:.5;cur
 .stat strong{display:block;font-size:22px}.stat small{color:#9aafc6}
 .tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected="true"]{background:#47d2b7;color:#062e2b}
 .panel{border:1px solid #30435c;background:#111e30;border-radius:10px;padding:15px}
-.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(275px,1fr);gap:14px}
+.layout{display:grid;grid-template-columns:200px minmax(0,2fr) minmax(270px,1fr);gap:14px}#project-tree button{display:block;width:100%;text-align:left;background:none;color:#c5d8ec;padding:8px 5px;font-size:12px;word-break:break-word}#project-tree button.active{background:#275a60}#detail button.relation{display:block;text-align:left;background:transparent;color:#47d2b7;padding:3px 0}
 #graph{width:100%;height:550px;display:block;background:#0d1728;border-radius:7px;touch-action:none}
 #graph .edge{stroke:#63839a;stroke-width:1.4;fill:none;opacity:.65}
 #graph .node{cursor:pointer}#graph .node circle{stroke:#a8c3dd;stroke-width:1.4}
@@ -26,7 +26,7 @@ button.secondary{background:#25384f;color:#e7edf7}button:disabled{opacity:.5;cur
 .function small{display:block;color:#a9bbcf;margin-top:5px}
 pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{color:#58ddc5}
 .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.hide{display:none!important}
-@media(max-width:850px){.layout{grid-template-columns:1fr}#graph{height:430px}}
+@media(max-width:1100px){.layout{grid-template-columns:1fr}#graph{height:430px}}
 </style></head><body>
 <header><h1>◈ CodeAtlas</h1><span style="color:#9fb7ca">Architecture Explorer · v0.2</span></header>
 <main>
@@ -40,9 +40,10 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <button class="secondary" id="tab-raw" role="tab" aria-selected="false">JSON report</button>
 </div>
 <section id="view-map" class="layout">
+<aside class="panel"><h2>Project explorer</h2><div id="project-tree">Scan a repository first.</div></aside>
 <div class="panel"><div class="filters"><input id="filter" placeholder="Find function or module…" aria-label="Filter graph">
 <select id="scope" aria-label="Graph scope"><option value="all">All functions</option><option value="connected">Functions with connections</option><option value="orphans">Orphan candidates</option></select>
-<button type="button" class="secondary" id="reset">Reset view</button></div>
+<button type="button" class="secondary" id="reset">Fit graph</button></div>
 <svg id="graph" role="img" aria-label="Function call graph"><text x="30" y="40" fill="#b5c9db">Run an analysis to view relationships.</text></svg>
 <p>Click a node to inspect callers and callees. Drag to pan; scroll to zoom. A node with no incoming calls is not necessarily dead code.</p></div>
 <div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
@@ -52,7 +53,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <section id="view-raw" class="panel hide"><h2>Structured analysis</h2><pre id="raw">No report yet.</pre></section>
 </main><script>
 'use strict';
-let report=null,selected=null,scale=1,panX=0,panY=0,dragging=false,startPoint=null;
+let report=null,selected=null,activeModule=null,scale=1,panX=0,panY=0,dragging=false,startPoint=null;
 const $=id=>document.getElementById(id);
 const safe=x=>String(x??'');
 function download(filename,content,type){const u=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=u;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
@@ -77,6 +78,26 @@ function showTab(name){
 }
 for(const name of ['map','docs','raw'])$('tab-'+name).addEventListener('click',()=>showTab(name));
 function el(tag,attrs={},textValue){const node=document.createElement(tag);for(const [key,val] of Object.entries(attrs))node.setAttribute(key,val);if(textValue!==undefined)node.textContent=safe(textValue);return node}
+function renderTree(){
+ const tree=$('project-tree');tree.replaceChildren();if(!report)return;
+ const paths=[...new Set(report.functions.map(f=>f.path))].sort();
+ for(const path of [null,...paths]){
+  const count=path===null?report.functions.length:report.functions.filter(f=>f.path===path).length;
+  const button=el('button',{type:'button'},path===null?'All modules ('+count+')':path.split('/').pop()+' ('+count+')');
+  if(path===activeModule)button.classList.add('active');
+  if(path)button.title=path;
+  button.addEventListener('click',()=>{activeModule=path;renderTree();fitGraph()});
+  tree.append(button);
+ }
+}
+function fitGraph(){
+ if(!report)return;
+ const count=report.functions.filter(f=>!activeModule||f.path===activeModule).length;
+ const width=$('graph').clientWidth||800,columns=Math.max(2,Math.floor(width/160));
+ const rows=Math.max(1,Math.ceil(count/columns));
+ scale=Math.max(.3,Math.min(1.2,(width-40)/(columns*160),500/(rows*110)));
+ panX=0;panY=0;renderGraph();
+}
 function detail(f){
  selected=f.id;
  const d=$('detail');d.replaceChildren();
@@ -104,7 +125,7 @@ function renderGraph(){
  const ns='http://www.w3.org/2000/svg';const make=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n};
  const query=$('filter').value.trim().toLowerCase(),scope=$('scope').value;
  const all=report.functions||[],connections=new Set((report.calls||[]).flatMap(e=>[e.source,e.target]));
- const nodes=all.filter(f=>(!query||(f.id+' '+f.path).toLowerCase().includes(query))&&(scope==='all'||scope==='orphans'&&f.orphan_candidate||scope==='connected'&&connections.has(f.id)));
+ const nodes=all.filter(f=>(!activeModule||f.path===activeModule)&&(!query||(f.id+' '+f.path).toLowerCase().includes(query))&&(scope==='all'||scope==='orphans'&&f.orphan_candidate||scope==='connected'&&connections.has(f.id)));
  const active=new Set(nodes.map(f=>f.id)),edges=(report.calls||[]).filter(e=>active.has(e.source)&&active.has(e.target));
  const width=Math.max(800,svg.clientWidth||800),columns=Math.max(2,Math.floor(width/170));
  const positions=new Map(nodes.map((f,i)=>[f.id,{x:100+(i%columns)*160,y:65+Math.floor(i/columns)*110}]));
@@ -120,8 +141,8 @@ function renderGraph(){
  }
  if(!nodes.length){const t=make('text',{x:30,y:40,fill:'#a8bad0'});t.textContent='No functions match the current filter.';svg.append(t)}
 }
-$('filter').addEventListener('input',renderGraph);$('scope').addEventListener('change',renderGraph);
-$('reset').addEventListener('click',()=>{scale=1;panX=0;panY=0;$('filter').value='';$('scope').value='all';renderGraph()});
+$('filter').addEventListener('input',fitGraph);$('scope').addEventListener('change',fitGraph);
+$('reset').addEventListener('click',fitGraph);
 $('graph').addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.3,Math.min(3,scale*(e.deltaY<0?1.12:.89)));renderGraph()},{passive:false});
 $('graph').addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;dragging=true;startPoint={x:e.clientX-panX,y:e.clientY-panY};$('graph').setPointerCapture(e.pointerId)});
 $('graph').addEventListener('pointermove',e=>{if(!dragging)return;panX=e.clientX-startPoint.x;panY=e.clientY-startPoint.y;renderGraph()});
@@ -133,11 +154,11 @@ $('scan').addEventListener('submit',async event=>{
  try{
  const response=await fetch('/api/analyse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:$('source').value.trim()})});
  const data=await response.json();if(!response.ok)throw Error(data.detail||'Analysis failed');
- report=data;selected=null;scale=1;panX=0;panY=0;
+ report=data;selected=null;activeModule=null;scale=1;panX=0;panY=0;
  $('status').textContent='Analysis completed · '+(data.functions||[]).length+' functions available.';
  $('stats').replaceChildren(...Object.entries(data.summary||{}).map(([k,v])=>{const item=el('div',{class:'stat'});item.append(el('strong',{},v),el('small',{},k.replaceAll('_',' ')));return item}));
  $('raw').textContent=JSON.stringify(data,null,2);$('json').disabled=false;$('markdown').disabled=false;
- renderDocs();renderGraph();showTab('map');
+ renderDocs();renderTree();fitGraph();showTab('map');
  }catch(error){$('status').textContent='Analysis failed: '+error.message}
  finally{b.disabled=false}
 });
