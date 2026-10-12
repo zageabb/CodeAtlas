@@ -65,3 +65,11 @@ def test_dependency_layout_and_module_cards():
     assert "f.kind==='module'" in page
     assert "f.path.startsWith('tests/')" in page
     assert "make('rect'" in page
+
+
+def test_import_edges_and_github_source_links_available():
+    page = TestClient(app).get("/").text
+    assert "module_import_edges" in page
+    assert "function sourceUrl(path,line)" in page
+    assert "Open source on GitHub" in page
+    assert "edge.type==='import'" in page
