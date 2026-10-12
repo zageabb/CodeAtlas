@@ -43,7 +43,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <aside class="panel"><h2>Project explorer</h2><div id="project-tree">Scan a repository first.</div></aside>
 <div class="panel"><div class="filters"><input id="filter" placeholder="Find function or module…" aria-label="Filter graph">
 <select id="scope" aria-label="Graph scope"><option value="all">All functions</option><option value="connected">Functions with connections</option><option value="orphans">Orphan candidates</option></select>
-<button type="button" class="secondary" id="reset">Fit graph</button></div>
+<select id="level" aria-label="Architecture level"><option value="application">Application modules</option><option value="module">Module functions</option><option value="function">Function dependencies</option></select><button type="button" class="secondary" id="reset">Fit graph</button></div>
 <svg id="graph" role="img" aria-label="Function call graph"><text x="30" y="40" fill="#b5c9db">Run an analysis to view relationships.</text></svg>
 <p>Click a node to inspect callers and callees. Drag to pan; scroll to zoom. A node with no incoming calls is not necessarily dead code.</p></div>
 <div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
@@ -86,13 +86,37 @@ function renderTree(){
   const button=el('button',{type:'button'},path===null?'All modules ('+count+')':path.split('/').pop()+' ('+count+')');
   if(path===activeModule)button.classList.add('active');
   if(path)button.title=path;
-  button.addEventListener('click',()=>{activeModule=path;renderTree();fitGraph()});
+  button.addEventListener('click',()=>{activeModule=path;selected=null;$('level').value=path?'module':'application';renderTree();fitGraph()});
   tree.append(button);
  }
 }
+function displayModel(){
+ if(!report)return {nodes:[],edges:[]};
+ const level=$('level').value,q=$('filter').value.toLowerCase().trim(),scope=$('scope').value;
+ const functions=report.functions||[],calls=report.calls||[],lookup=new Map(functions.map(f=>[f.id,f]));
+ const connected=new Set(calls.flatMap(e=>[e.source,e.target]));
+ if(level==='application'){
+  const files=[...new Set(functions.map(f=>f.path))].sort();
+  const nodes=files.filter(p=>p.toLowerCase().includes(q)).map(path=>({id:path,name:path.split('/').pop(),path,kind:'module',size:functions.filter(f=>f.path===path).length}));
+  const present=new Set(nodes.map(n=>n.id));
+  const edges=[...new Set(calls.map(e=>{const a=lookup.get(e.source),b=lookup.get(e.target);return a&&b&&a.path!==b.path?a.path+'|'+b.path:null}).filter(Boolean))].map(pair=>{const [source,target]=pair.split('|');return {source,target}}).filter(e=>present.has(e.source)&&present.has(e.target));
+  return {nodes,edges};
+ }
+ let nodes=functions.filter(f=>(level==='function' ? selected&&(f.id===selected||calls.some(e=>e.source===selected&&e.target===f.id||e.target===selected&&e.source===f.id)) : !activeModule||f.path===activeModule));
+ if(level==='module'&&activeModule){
+  const localIds=new Set(nodes.map(f=>f.id));
+  const neighbors=new Set(calls.filter(e=>localIds.has(e.source)||localIds.has(e.target)).flatMap(e=>[e.source,e.target]));
+  nodes=functions.filter(f=>localIds.has(f.id)||neighbors.has(f.id));
+ }
+ if(scope==='connected')nodes=nodes.filter(f=>connected.has(f.id));
+ if(scope==='orphans')nodes=nodes.filter(f=>f.orphan_candidate);
+ if(q)nodes=nodes.filter(f=>(f.id+' '+f.path).toLowerCase().includes(q));
+ const active=new Set(nodes.map(f=>f.id));
+ return {nodes:nodes.map(f=>({...f,kind:'function'})),edges:calls.filter(e=>active.has(e.source)&&active.has(e.target))};
+}
 function fitGraph(){
  if(!report)return;
- const count=report.functions.filter(f=>!activeModule||f.path===activeModule).length;
+ const count=displayModel().nodes.length;
  const width=$('graph').clientWidth||800,columns=Math.max(2,Math.floor(width/160));
  const rows=Math.max(1,Math.ceil(count/columns));
  scale=Math.max(.3,Math.min(1.2,(width-40)/(columns*160),500/(rows*110)));
@@ -111,7 +135,7 @@ function detail(f){
  for(const id of values){
  const link=el('button',{type:'button',class:'relation'},id);
  link.addEventListener('click',()=>{const target=report.functions.find(item=>item.id===id);
- if(target){activeModule=target.path;renderTree();detail(target);fitGraph()}});
+ if(target){activeModule=target.path;$('level').value='function';renderTree();detail(target);fitGraph()}});
  dd.append(link)}
  d.append(dd);
  }
@@ -121,7 +145,7 @@ function renderDocs(){
  const host=$('functions');host.replaceChildren();if(!report)return;
  const q=$('docfilter').value.trim().toLowerCase();
  for(const f of report.functions.filter(f=>(f.id+' '+f.path).toLowerCase().includes(q))){
- const card=el('article',{class:'function'}),b=el('button',{},f.id);b.addEventListener('click',()=>{showTab('map');detail(f)});
+ const card=el('article',{class:'function'}),b=el('button',{},f.id);b.addEventListener('click',()=>{activeModule=f.path;$('level').value='function';renderTree();showTab('map');detail(f);fitGraph()});
  card.append(b,el('small',{},f.path+':'+f.line),el('small',{},'Callers: '+f.incoming_calls+' · '+(f.orphan_candidate?'Orphan candidate':f.entrypoint_candidate?'Entry point':'Internal function')));
  host.append(card);
  }
@@ -130,25 +154,22 @@ $('docfilter').addEventListener('input',renderDocs);
 function renderGraph(){
  const svg=$('graph');svg.replaceChildren();if(!report)return;
  const ns='http://www.w3.org/2000/svg';const make=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n};
- const query=$('filter').value.trim().toLowerCase(),scope=$('scope').value;
- const all=report.functions||[],connections=new Set((report.calls||[]).flatMap(e=>[e.source,e.target]));
- const nodes=all.filter(f=>(!activeModule||f.path===activeModule)&&(!query||(f.id+' '+f.path).toLowerCase().includes(query))&&(scope==='all'||scope==='orphans'&&f.orphan_candidate||scope==='connected'&&connections.has(f.id)));
- const active=new Set(nodes.map(f=>f.id)),edges=(report.calls||[]).filter(e=>active.has(e.source)&&active.has(e.target));
- const width=Math.max(800,svg.clientWidth||800),columns=Math.max(2,Math.floor(width/170));
+ const {nodes,edges}=displayModel();
+ const width=Math.max(400,svg.clientWidth||800),columns=Math.max(2,Math.floor(width/170));
  const positions=new Map(nodes.map((f,i)=>[f.id,{x:100+(i%columns)*160,y:65+Math.floor(i/columns)*110}]));
  const viewport=make('g',{transform:'translate('+panX+','+panY+') scale('+scale+')'});svg.append(viewport);
  const defs=make('defs'),marker=make('marker',{id:'arrow',markerWidth:8,markerHeight:8,refX:7,refY:3,orient:'auto'}),head=make('path',{d:'M0 0 L6 3 L0 6',fill:'none',stroke:'#63839a'});marker.append(head);defs.append(marker);svg.append(defs);
  for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);viewport.append(make('path',{class:'edge',d:'M'+a.x+' '+a.y+' L'+b.x+' '+b.y,'marker-end':'url(#arrow)'}))}
  for(const f of nodes){
  const p=positions.get(f.id),g=make('g',{class:'node'+(selected===f.id?' active':''),transform:'translate('+p.x+','+p.y+')',tabindex:0,role:'button','aria-label':f.id});
- g.append(make('circle',{r:26,fill:f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}));
+ g.append(make('circle',{r:26,fill:f.kind==='module'?'#725d9b':f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}));
  const txt=make('text',{'text-anchor':'middle',y:42});txt.textContent=f.name.length>21?f.name.slice(0,19)+'…':f.name;g.append(txt);
- g.addEventListener('click',()=>detail(f));g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();detail(f)}});
+ const activate=()=>{if(f.kind==='module'){activeModule=f.path;$('level').value='module';renderTree();fitGraph()}else{if($('level').value==='function'){selected=f.id;detail(f);fitGraph()}else detail(f)}};g.addEventListener('click',activate);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate()}});
  viewport.append(g);
  }
  if(!nodes.length){const t=make('text',{x:30,y:40,fill:'#a8bad0'});t.textContent='No functions match the current filter.';svg.append(t)}
 }
-$('filter').addEventListener('input',fitGraph);$('scope').addEventListener('change',fitGraph);
+$('level').addEventListener('change',()=>{if($('level').value==='function'&&!selected){selected=report?.functions?.[0]?.id||null}fitGraph()});$('filter').addEventListener('input',fitGraph);$('scope').addEventListener('change',fitGraph);
 $('reset').addEventListener('click',fitGraph);
 $('graph').addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.3,Math.min(3,scale*(e.deltaY<0?1.12:.89)));renderGraph()},{passive:false});
 $('graph').addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;dragging=true;startPoint={x:e.clientX-panX,y:e.clientY-panY};$('graph').setPointerCapture(e.pointerId)});
@@ -161,7 +182,7 @@ $('scan').addEventListener('submit',async event=>{
  try{
  const response=await fetch('/api/analyse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:$('source').value.trim()})});
  const data=await response.json();if(!response.ok)throw Error(data.detail||'Analysis failed');
- report=data;selected=null;activeModule=null;scale=1;panX=0;panY=0;
+ report=data;selected=null;activeModule=null;$('level').value='application';scale=1;panX=0;panY=0;
  $('status').textContent='Analysis completed · '+(data.functions||[]).length+' functions available.';
  $('stats').replaceChildren(...Object.entries(data.summary||{}).map(([k,v])=>{const item=el('div',{class:'stat'});item.append(el('strong',{},v),el('small',{},k.replaceAll('_',' ')));return item}));
  $('raw').textContent=JSON.stringify(data,null,2);$('json').disabled=false;$('markdown').disabled=false;
