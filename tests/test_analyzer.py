@@ -105,3 +105,17 @@ def test_documentation_metadata(tmp_path):
     assert report['functions'][0]['parameters'] == ['name']
     assert report['functions'][0]['returns'] == 'str'
     assert report['functions'][0]['docstring'] == 'Return name.'
+
+
+def test_class_and_http_route_documentation(tmp_path):
+    (tmp_path / "api.py").write_text(
+        'class Handler:\n    """Handles items."""\n    def perform(self):\n        return True\n'
+        'class Router:\n    def get(self, path):\n        pass\n'
+        'router = Router()\n@router.get("/items")\ndef list_items():\n    return []\n',
+        encoding="utf-8",
+    )
+    report = analyze(tmp_path)
+    classes = {c["name"]: c for c in report["classes"]}
+    assert classes["Handler"]["docstring"] == "Handles items."
+    assert "api.Handler.perform" in classes["Handler"]["methods"]
+    assert {"method": "GET", "route": "/items", "handler": "api.list_items", "path": "api.py", "line": 8} in report["api_routes"]
