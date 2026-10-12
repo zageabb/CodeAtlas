@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeAtlas · Architecture Explorer</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e7edf7}
+*{box-sizing:border-box}body{margin:0}header{padding:18px 24px;border-bottom:1px solid #2b3a50;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+h1{font-size:23px;margin:0}h2{font-size:16px;margin:0 0 10px}p{color:#a9bbcf}
+main{padding:20px;max-width:1600px;margin:auto}.scan{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 20px}
+input,select{background:#18263a;color:#eff6ff;border:1px solid #445570;border-radius:7px;padding:11px;min-width:160px}
+#source{flex:1;min-width:280px}button{background:#47d2b7;color:#062e2b;border:0;border-radius:7px;padding:10px 15px;font-weight:650;cursor:pointer}
+button.secondary{background:#25384f;color:#e7edf7}button:disabled{opacity:.5;cursor:not-allowed}
+.statrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}.stat{background:#172338;padding:12px 16px;border-radius:8px;min-width:125px}
+.stat strong{display:block;font-size:22px}.stat small{color:#9aafc6}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected="true"]{background:#47d2b7;color:#062e2b}
+.panel{border:1px solid #30435c;background:#111e30;border-radius:10px;padding:15px}
+.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(275px,1fr);gap:14px}
+#graph{width:100%;height:550px;display:block;background:#0d1728;border-radius:7px;touch-action:none}
+#graph .edge{stroke:#63839a;stroke-width:1.4;fill:none;opacity:.65}
+#graph .node{cursor:pointer}#graph .node circle{stroke:#a8c3dd;stroke-width:1.4}
+#graph .node text{fill:#e7edf7;font:11px system-ui;pointer-events:none}
+#graph .node.active circle{stroke:#fff;stroke-width:3}
+#detail{white-space:normal;overflow-wrap:anywhere}#detail dt{color:#8faac0;font-size:12px;margin-top:12px}
+#detail dd{margin:4px 0 0}#functions{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.function{padding:12px;border:1px solid #344862;border-radius:8px;background:#14243a}
+.function button{background:transparent;color:#63e8d1;padding:0;text-align:left;font-size:14px}
+.function small{display:block;color:#a9bbcf;margin-top:5px}
+pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{color:#58ddc5}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.hide{display:none!important}
+@media(max-width:850px){.layout{grid-template-columns:1fr}#graph{height:430px}}
+</style></head><body>
+<header><h1>◈ CodeAtlas</h1><span style="color:#9fb7ca">Architecture Explorer · v0.2</span></header>
+<main>
+<form class="scan" id="scan"><input id="source" required aria-label="Source folder or repository URL" placeholder="Local folder or https://github.com/owner/repo">
+<button id="go">Analyse code</button><button type="button" class="secondary" id="json" disabled>Export JSON</button><button type="button" class="secondary" id="markdown" disabled>Export documentation</button></form>
+<p id="status" role="status">Enter a source to generate its architecture map.</p>
+<section id="stats" class="statrow" aria-label="Analysis summary"></section>
+<div class="tabs" role="tablist">
+<button class="secondary" id="tab-map" role="tab" aria-selected="true">Function map</button>
+<button class="secondary" id="tab-docs" role="tab" aria-selected="false">Documentation centre</button>
+<button class="secondary" id="tab-raw" role="tab" aria-selected="false">JSON report</button>
+</div>
+<section id="view-map" class="layout">
+<div class="panel"><div class="filters"><input id="filter" placeholder="Find function or module…" aria-label="Filter graph">
+<select id="scope" aria-label="Graph scope"><option value="all">All functions</option><option value="connected">Functions with connections</option><option value="orphans">Orphan candidates</option></select>
+<button type="button" class="secondary" id="reset">Reset view</button></div>
+<svg id="graph" role="img" aria-label="Function call graph"><text x="30" y="40" fill="#b5c9db">Run an analysis to view relationships.</text></svg>
+<p>Click a node to inspect callers and callees. Drag to pan; scroll to zoom. A node with no incoming calls is not necessarily dead code.</p></div>
+<div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
+</section>
+<section id="view-docs" class="panel hide"><h2>Function catalogue</h2><p>Generated directly from parsed source. Documentation is evidence-based and does not infer function behaviour.</p>
+<input id="docfilter" placeholder="Search functions, paths or modules…" aria-label="Filter function catalogue"><div id="functions"></div></section>
+<section id="view-raw" class="panel hide"><h2>Structured analysis</h2><pre id="raw">No report yet.</pre></section>
+</main><script>
+'use strict';
+let report=null,selected=null,scale=1,panX=0,panY=0,dragging=false,startPoint=null;
+const $=id=>document.getElementById(id);
+const safe=x=>String(x??'');
+function download(filename,content,type){const u=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=u;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function md(report){
+ let out='# CodeAtlas application documentation\n\nGenerated from static source analysis. Orphan candidates are not confirmed unused code.\n\n';
+ out+='## Summary\n\n'+Object.entries(report.summary||{}).map(([k,v])=>'- '+k.replaceAll('_',' ')+': '+v).join('\n')+'\n\n';
+ out+='## Function catalogue\n\n';
+ for(const f of report.functions||[]){
+ out+='### '+f.id+'\n\n- Source: \x60'+f.path+':'+f.line+'\x60\n- Incoming calls: '+f.incoming_calls+'\n- Entrypoint candidate: '+Boolean(f.entrypoint_candidate)+'\n- Orphan candidate: '+Boolean(f.orphan_candidate)+'\n';
+ const callers=(report.calls||[]).filter(c=>c.target===f.id).map(c=>c.source);
+ const callees=(report.calls||[]).filter(c=>c.source===f.id).map(c=>c.target);
+ out+='- Called by: '+(callers.join(', ')||'No direct callers detected')+'\n- Calls: '+(callees.join(', ')||'No internal targets resolved')+'\n\n';
+ }
+ out+='## Detected call relationships\n\n\x60\x60\x60mermaid\ngraph LR\n';
+ const ids=new Map((report.functions||[]).map((f,i)=>[f.id,'f'+i]));
+ for(const edge of report.calls||[]){if(ids.has(edge.source)&&ids.has(edge.target))out+=ids.get(edge.source)+' --> '+ids.get(edge.target)+'\n'}
+ out+='\x60\x60\x60\n\n## Limitations\n\n'+(report.limitations||[]).map(x=>'- '+x).join('\n')+'\n';
+ return out;
+}
+function showTab(name){
+ for(const tab of ['map','docs','raw']){$('view-'+tab).classList.toggle('hide',tab!==name);$('tab-'+tab).setAttribute('aria-selected',String(tab===name))}
+}
+for(const name of ['map','docs','raw'])$('tab-'+name).addEventListener('click',()=>showTab(name));
+function el(tag,attrs={},textValue){const node=document.createElement(tag);for(const [key,val] of Object.entries(attrs))node.setAttribute(key,val);if(textValue!==undefined)node.textContent=safe(textValue);return node}
+function detail(f){
+ selected=f.id;
+ const d=$('detail');d.replaceChildren();
+ d.append(el('h2',{},f.name));
+ for(const [label,value] of [['Full identifier',f.id],['File',f.path+':'+f.line],['Async',String(Boolean(f.async))],['Direct incoming calls',f.incoming_calls],['Entry point candidate',String(Boolean(f.entrypoint_candidate))],['Orphan candidate',String(Boolean(f.orphan_candidate))],['Decorators',(f.decorators||[]).join(', ')||'None']]){
+ const dt=el('dt',{},label),dd=el('dd',{},value);d.append(dt,dd);
+ }
+ for(const [label,values] of [['Called by',(report.calls||[]).filter(e=>e.target===f.id).map(e=>e.source)],['Calls',(report.calls||[]).filter(e=>e.source===f.id).map(e=>e.target)]]){
+ d.append(el('dt',{},label),el('dd',{},values.join('\n')||'No direct relationships recorded'));
+ }
+ renderGraph();
+}
+function renderDocs(){
+ const host=$('functions');host.replaceChildren();if(!report)return;
+ const q=$('docfilter').value.trim().toLowerCase();
+ for(const f of report.functions.filter(f=>(f.id+' '+f.path).toLowerCase().includes(q))){
+ const card=el('article',{class:'function'}),b=el('button',{},f.id);b.addEventListener('click',()=>{showTab('map');detail(f)});
+ card.append(b,el('small',{},f.path+':'+f.line),el('small',{},'Callers: '+f.incoming_calls+' · '+(f.orphan_candidate?'Orphan candidate':f.entrypoint_candidate?'Entry point':'Internal function')));
+ host.append(card);
+ }
+}
+$('docfilter').addEventListener('input',renderDocs);
+function renderGraph(){
+ const svg=$('graph');svg.replaceChildren();if(!report)return;
+ const ns='http://www.w3.org/2000/svg';const make=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n};
+ const query=$('filter').value.trim().toLowerCase(),scope=$('scope').value;
+ const all=report.functions||[],connections=new Set((report.calls||[]).flatMap(e=>[e.source,e.target]));
+ const nodes=all.filter(f=>(!query||(f.id+' '+f.path).toLowerCase().includes(query))&&(scope==='all'||scope==='orphans'&&f.orphan_candidate||scope==='connected'&&connections.has(f.id)));
+ const active=new Set(nodes.map(f=>f.id)),edges=(report.calls||[]).filter(e=>active.has(e.source)&&active.has(e.target));
+ const width=Math.max(800,svg.clientWidth||800),columns=Math.max(2,Math.floor(width/170));
+ const positions=new Map(nodes.map((f,i)=>[f.id,{x:100+(i%columns)*160,y:65+Math.floor(i/columns)*110}]));
+ const viewport=make('g',{transform:'translate('+panX+','+panY+') scale('+scale+')'});svg.append(viewport);
+ const defs=make('defs'),marker=make('marker',{id:'arrow',markerWidth:8,markerHeight:8,refX:7,refY:3,orient:'auto'}),head=make('path',{d:'M0 0 L6 3 L0 6',fill:'none',stroke:'#63839a'});marker.append(head);defs.append(marker);svg.append(defs);
+ for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);viewport.append(make('path',{class:'edge',d:'M'+a.x+' '+a.y+' L'+b.x+' '+b.y,'marker-end':'url(#arrow)'}))}
+ for(const f of nodes){
+ const p=positions.get(f.id),g=make('g',{class:'node'+(selected===f.id?' active':''),transform:'translate('+p.x+','+p.y+')',tabindex:0,role:'button','aria-label':f.id});
+ g.append(make('circle',{r:26,fill:f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}));
+ const txt=make('text',{'text-anchor':'middle',y:42});txt.textContent=f.name.length>21?f.name.slice(0,19)+'…':f.name;g.append(txt);
+ g.addEventListener('click',()=>detail(f));g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();detail(f)}});
+ viewport.append(g);
+ }
+ if(!nodes.length){const t=make('text',{x:30,y:40,fill:'#a8bad0'});t.textContent='No functions match the current filter.';svg.append(t)}
+}
+$('filter').addEventListener('input',renderGraph);$('scope').addEventListener('change',renderGraph);
+$('reset').addEventListener('click',()=>{scale=1;panX=0;panY=0;$('filter').value='';$('scope').value='all';renderGraph()});
+$('graph').addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.3,Math.min(3,scale*(e.deltaY<0?1.12:.89)));renderGraph()},{passive:false});
+$('graph').addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;dragging=true;startPoint={x:e.clientX-panX,y:e.clientY-panY};$('graph').setPointerCapture(e.pointerId)});
+$('graph').addEventListener('pointermove',e=>{if(!dragging)return;panX=e.clientX-startPoint.x;panY=e.clientY-startPoint.y;renderGraph()});
+$('graph').addEventListener('pointerup',()=>dragging=false);
+$('json').addEventListener('click',()=>{if(report)download('codeatlas-report.json',JSON.stringify(report,null,2),'application/json')});
+$('markdown').addEventListener('click',()=>{if(report)download('codeatlas-documentation.md',md(report),'text/markdown')});
+$('scan').addEventListener('submit',async event=>{
+ event.preventDefault();const b=$('go');b.disabled=true;$('status').textContent='Analysing source…';
+ try{
+ const response=await fetch('/api/analyse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:$('source').value.trim()})});
+ const data=await response.json();if(!response.ok)throw Error(data.detail||'Analysis failed');
+ report=data;selected=null;scale=1;panX=0;panY=0;
+ $('status').textContent='Analysis completed · '+(data.functions||[]).length+' functions available.';
+ $('stats').replaceChildren(...Object.entries(data.summary||{}).map(([k,v])=>{const item=el('div',{class:'stat'});item.append(el('strong',{},v),el('small',{},k.replaceAll('_',' ')));return item}));
+ $('raw').textContent=JSON.stringify(data,null,2);$('json').disabled=false;$('markdown').disabled=false;
+ renderDocs();renderGraph();showTab('map');
+ }catch(error){$('status').textContent='Analysis failed: '+error.message}
+ finally{b.disabled=false}
+});
+</script></body></html>
