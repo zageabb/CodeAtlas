@@ -115,3 +115,10 @@ CI green and manual localhost smoke test before declaring milestone complete.
 - Added web regression tests for provenance and HTML controls.
 - Limitations: local uncommitted changes cannot be identified by git HEAD alone. Non-GitHub local scans intentionally have no remote-source link. ZIP upload, branch selector and HTML/PDF report styling remain outstanding.
 - Verification: commits pushed; automated CI status and local browser tests still pending.
+
+### Printable standalone architecture report iteration (2026-10-12)
+- Replaced the raw-JSON HTML export with a structured self-contained HTML report.
+- Includes analysis summary, source provenance, modules, classes, API routes, functions, call edges, import edges, cycles, parse errors and analysis limitations.
+- Report escapes source-derived text and uses embedded CSS with print styling; no external CDN required.
+- Added regression assertions for report sections and print CSS.
+- Outstanding: visual dependency diagrams in export, automated browser validation, PDF-generation pipeline, class/route fidelity improvements and layout testing with large repositories.
