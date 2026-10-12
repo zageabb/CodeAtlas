@@ -1,6 +1,6 @@
-"""Minimal web interface for the initial CodeAtlas milestone.
+"""CodeAtlas web API and packaged architecture explorer.
 
-Bind to 127.0.0.1; add authentication and path access policy before public deployment.
+Bind to loopback only until authentication and source access policies are added.
 """
 from __future__ import annotations
 
@@ -27,7 +27,16 @@ def analyse(request: ScanRequest):
         with snapshot(request.source) as root:
             return analyze(root)
     except (ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
-        raise HTTPException(status_code=400, detail=f"Analysis failed: {type(exc@app.get("/")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Analysis failed: {type(exc).__name__}",
+        ) from exc
+
+
+@app.get("/")
 def home():
     """Serve the packaged, dependency-free architecture explorer."""
-    return FileResponse(Path(__file__).parent / "static" / "index.html", media_type="text/html")
+    return FileResponse(
+        Path(__file__).parent / "static" / "index.html",
+        media_type="text/html",
+    )
