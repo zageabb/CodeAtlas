@@ -41,3 +41,18 @@ def test_explorer_module_navigation_and_linked_dependencies():
     assert "function fitGraph()" in response.text
     assert "class:'relation'" in response.text
     assert "activeModule=target.path" in response.text
+
+
+def test_architecture_drilldown_controls():
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    page = response.text
+    assert 'id="level"' in page
+    assert 'value="application"' in page
+    assert 'value="module"' in page
+    assert 'value="function"' in page
+    assert "function displayModel()" in page
+    assert "level==='application'" in page
+    assert "level==='module'" in page
+    assert "level==='function'" in page
+    assert "activeModule=f.path" in page
