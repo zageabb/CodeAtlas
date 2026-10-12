@@ -53,6 +53,15 @@
 - HTML regression assertion added; live browser/CI verification pending.
 - Planned: include import-only dependencies, improve cycle handling, highlight selected paths, and add source hyperlinks.
 
+### Dependency inspection iteration (2026-10-12)
+- Added static internal Python module import edge extraction, retained separately from call edges.
+- Application view overlays import-only links with dashed amber styling alongside solid call links.
+- Selected module/function adjacency is highlighted, with unrelated graph edges dimmed.
+- Function details link to GitHub source file and line for canonical GitHub URL inputs (currently defaults to main).
+- Added regression tests for relative internal module imports and UI controls.
+- Follow-up: include pinned scanned Git SHA in reports, resolve imported symbols more precisely, and expand highlighting to multi-hop paths.
+- Avoid interpreting module imports as proof of runtime execution.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
