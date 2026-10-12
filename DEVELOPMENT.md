@@ -45,6 +45,14 @@
 - Added interface regression checks; live browser and CI verification still required.
 - Next: true directed graph layout, multi-hop depth controls, import-based dependency edges, GitHub source hyperlinks and a confidence model.
 
+### Dependency-aware layout iteration (2026-10-12)
+- Render caller-to-dependency layers instead of alphabetical row layout using a Kahn-style traversal.
+- Application modules use labelled rectangular cards with counts; test modules use a separate visual style.
+- Curved, directed connections and fit-to-view support; low-opacity unrelated edges when a function is selected.
+- Fallback places cyclic/unlayered nodes into the initial layer; robust cycle condensation remains a future task.
+- HTML regression assertion added; live browser/CI verification pending.
+- Planned: include import-only dependencies, improve cycle handling, highlight selected paths, and add source hyperlinks.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
