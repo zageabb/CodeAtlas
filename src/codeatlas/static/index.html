@@ -43,7 +43,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <aside class="panel"><h2>Project explorer</h2><div id="project-tree">Scan a repository first.</div></aside>
 <div class="panel"><div class="filters"><input id="filter" placeholder="Find function or module…" aria-label="Filter graph">
 <select id="scope" aria-label="Graph scope"><option value="all">All functions</option><option value="connected">Functions with connections</option><option value="orphans">Orphan candidates</option></select>
-<select id="level" aria-label="Architecture level"><option value="application">Application modules</option><option value="module">Module functions</option><option value="function">Function dependencies</option></select><button type="button" class="secondary" id="reset">Fit graph</button></div>
+<select id="depth" aria-label="Dependency trace depth"><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option><option value="all">All reachable</option></select><select id="level" aria-label="Architecture level"><option value="application">Application modules</option><option value="module">Module functions</option><option value="function">Function dependencies</option></select><button type="button" class="secondary" id="reset">Fit graph</button></div>
 <svg id="graph" role="img" aria-label="Function call graph"><text x="30" y="40" fill="#b5c9db">Run an analysis to view relationships.</text></svg>
 <p>Click a node to inspect callers and callees. Drag to pan; scroll to zoom. A node with no incoming calls is not necessarily dead code.</p></div>
 <div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
@@ -66,6 +66,10 @@ function md(report){
  const callers=(report.calls||[]).filter(c=>c.target===f.id).map(c=>c.source);
  const callees=(report.calls||[]).filter(c=>c.source===f.id).map(c=>c.target);
  out+='- Called by: '+(callers.join(', ')||'No direct callers detected')+'\n- Calls: '+(callees.join(', ')||'No internal targets resolved')+'\n\n';
+ }
+ out+='## Circular dependencies\\n\\n';
+ for(const [label,cycles] of [['Function call cycles',report.function_cycles||[]],['Module import cycles',report.module_import_cycles||[]]]){
+ out+='### '+label+'\\n\\n'+(cycles.length?cycles.map(c=>'- '+c.join(' → ')).join('\\n'):'None detected')+'\\n\\n';
  }
  out+='## Detected call relationships\n\n\x60\x60\x60mermaid\ngraph LR\n';
  const ids=new Map((report.functions||[]).map((f,i)=>[f.id,'f'+i]));
@@ -104,7 +108,18 @@ function displayModel(){
   const edges=[...moduleCalls,...imports].filter(e=>present.has(e.source)&&present.has(e.target));
   return {nodes,edges};
  }
- let nodes=functions.filter(f=>(level==='function' ? selected&&(f.id===selected||calls.some(e=>e.source===selected&&e.target===f.id||e.target===selected&&e.source===f.id)) : !activeModule||f.path===activeModule));
+ let selectedNeighborhood=null;
+ if(level==='function'&&selected){
+  const maxDepth=$('depth').value==='all'?functions.length:Number($('depth').value);
+  selectedNeighborhood=new Set([selected]);let frontier=[selected];
+  for(let step=0;step<maxDepth&&frontier.length;step++){
+   const next=new Set();
+   for(const edge of calls){if(frontier.includes(edge.source)&&!selectedNeighborhood.has(edge.target))next.add(edge.target);
+    if(frontier.includes(edge.target)&&!selectedNeighborhood.has(edge.source))next.add(edge.source)}
+   frontier=[...next];for(const id of next)selectedNeighborhood.add(id);
+  }
+ }
+ let nodes=functions.filter(f=>level==='function'?selectedNeighborhood?.has(f.id):!activeModule||f.path===activeModule);
  if(level==='module'&&activeModule){
   const localIds=new Set(nodes.map(f=>f.id));
   const neighbors=new Set(calls.filter(e=>localIds.has(e.source)||localIds.has(e.target)).flatMap(e=>[e.source,e.target]));
@@ -200,7 +215,7 @@ function renderGraph(){
  }
  if(!nodes.length){const t=make('text',{x:30,y:40,fill:'#a8bad0'});t.textContent='No functions match the current filter.';svg.append(t)}
 }
-$('level').addEventListener('change',()=>{if($('level').value==='function'&&!selected){selected=report?.functions?.[0]?.id||null}fitGraph()});$('filter').addEventListener('input',fitGraph);$('scope').addEventListener('change',fitGraph);
+$('depth').addEventListener('change',fitGraph);$('level').addEventListener('change',()=>{if($('level').value==='function'&&!selected){selected=report?.functions?.[0]?.id||null}fitGraph()});$('filter').addEventListener('input',fitGraph);$('scope').addEventListener('change',fitGraph);
 $('reset').addEventListener('click',fitGraph);
 $('graph').addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.3,Math.min(3,scale*(e.deltaY<0?1.12:.89)));renderGraph()},{passive:false});
 $('graph').addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;dragging=true;startPoint={x:e.clientX-panX,y:e.clientY-panY};$('graph').setPointerCapture(e.pointerId)});
