@@ -49,7 +49,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
 </section>
 <section id="view-docs" class="panel hide"><h2>Function catalogue</h2><p>Generated directly from parsed source. Documentation is evidence-based and does not infer function behaviour.</p>
-<input id="docfilter" placeholder="Search functions, paths or modules…" aria-label="Filter function catalogue"><div id="functions"></div></section>
+<input id="docfilter" placeholder="Search functions, paths or modules…" aria-label="Filter function catalogue"><h2>Modules</h2><div id="modules"></div><h2>Functions</h2><div id="functions"></div></section>
 <section id="view-raw" class="panel hide"><h2>Structured analysis</h2><pre id="raw">No report yet.</pre></section>
 </main><script>
 'use strict';
@@ -65,7 +65,7 @@ function md(report){
  out+='### '+f.id+'\n\n- Source: \x60'+f.path+':'+f.line+'\x60\n- Incoming calls: '+f.incoming_calls+'\n- Entrypoint candidate: '+Boolean(f.entrypoint_candidate)+'\n- Orphan candidate: '+Boolean(f.orphan_candidate)+'\n';
  const callers=(report.calls||[]).filter(c=>c.target===f.id).map(c=>c.source);
  const callees=(report.calls||[]).filter(c=>c.source===f.id).map(c=>c.target);
- out+='- Called by: '+(callers.join(', ')||'No direct callers detected')+'\n- Calls: '+(callees.join(', ')||'No internal targets resolved')+'\n\n';
+ out+='- Parameters: '+(f.parameters||[]).join(', ')+'\\n- Return annotation: '+(f.returns||'Not annotated')+'\\n- Docstring: '+(f.docstring||'Not provided')+'\\n- Called by: '+(callers.join(', ')||'No direct callers detected')+'\n- Calls: '+(callees.join(', ')||'No internal targets resolved')+'\n\n';
  }
  out+='## Circular dependencies\\n\\n';
  for(const [label,cycles] of [['Function call cycles',report.function_cycles||[]],['Module import cycles',report.module_import_cycles||[]]]){
@@ -167,11 +167,13 @@ function detail(f){
  renderGraph();
 }
 function renderDocs(){
- const host=$('functions');host.replaceChildren();if(!report)return;
+ const host=$('functions'),moduleHost=$('modules');host.replaceChildren();moduleHost.replaceChildren();if(!report)return;
  const q=$('docfilter').value.trim().toLowerCase();
+ for(const m of report.modules||[]){if(!(m.path+' '+m.docstring).toLowerCase().includes(q))continue;
+ const card=el('article',{class:'function'});card.append(el('h3',{},m.path),el('p',{},m.docstring||'No module docstring provided.'),el('small',{},m.functions+' functions'),el('small',{},'Imports: '+(m.internal_imports||[]).join(', ')));moduleHost.append(card)}
  for(const f of report.functions.filter(f=>(f.id+' '+f.path).toLowerCase().includes(q))){
  const card=el('article',{class:'function'}),b=el('button',{},f.id);b.addEventListener('click',()=>{activeModule=f.path;$('level').value='function';renderTree();showTab('map');detail(f);fitGraph()});
- card.append(b,el('small',{},f.path+':'+f.line),el('small',{},'Callers: '+f.incoming_calls+' · '+(f.orphan_candidate?'Orphan candidate':f.entrypoint_candidate?'Entry point':'Internal function')));
+ card.append(b,el('small',{},f.path+':'+f.line),el('p',{},f.docstring||'No docstring provided.'),el('small',{},'Parameters: '+(f.parameters||[]).join(', ')+' · Returns: '+(f.returns||'Not annotated')),el('small',{},'Callers: '+f.incoming_calls+' · '+(f.orphan_candidate?'Orphan candidate':f.entrypoint_candidate?'Entry point':'Internal function')));
  host.append(card);
  }
 }
