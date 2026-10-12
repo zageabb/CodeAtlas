@@ -63,3 +63,16 @@ def test_nodevisitor_methods_are_callbacks(tmp_path):
     function = next(f for f in report["functions"] if f["name"] == "visit_Call")
     assert function["entrypoint_candidate"]
     assert not function["orphan_candidate"]
+
+
+def test_internal_import_edges(tmp_path):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "service.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+    (pkg / "api.py").write_text(
+        "from . import service\nfrom .service import run\n"
+        "def main():\n    return run()\n", encoding="utf-8")
+    report = analyze(tmp_path)
+    assert {"source": "pkg/api.py", "target": "pkg/service.py", "type": "import"} in report["module_import_edges"]
+    assert report["summary"]["internal_import_edges"] >= 1
