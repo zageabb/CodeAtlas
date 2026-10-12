@@ -22,6 +22,7 @@ class _Scanner(ast.NodeVisitor):
         self.imports: list[str] = []
         self.decorators: dict[str, list[str]] = {}
         self.classes: dict[str, list[str]] = {}
+        self.aliases: list[tuple[str, str]] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         self.imports.extend(alias.name for alias in node.names)
@@ -36,6 +37,16 @@ class _Scanner(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
         self.stack.pop()
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if self.stack and isinstance(node.value, ast.Name):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    self.aliases.append((
+                        ".".join([self.module, *self.stack, target.id]),
+                        ".".join([self.module, *self.stack, node.value.id]),
+                    ))
+        self.generic_visit(node)
 
     def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         qualified = ".".join([self.module, *self.stack, node.name])
@@ -80,6 +91,7 @@ def analyze(root: str | Path) -> dict:
     raw_calls: list[tuple[str, str]] = []
     imports: list[dict] = []
     classes: dict[str, list[str]] = {}
+    aliases: list[tuple[str, str]] = []
     errors: list[dict] = []
     files = 0
 
@@ -96,6 +108,7 @@ def analyze(root: str | Path) -> dict:
         visitor = _Scanner(_module_name(relative), relative.as_posix())
         visitor.visit(tree)
         classes.update(visitor.classes)
+        aliases.extend(visitor.aliases)
         functions.extend(visitor.functions)
         raw_calls.extend(visitor.calls)
         imports.append({"path": relative.as_posix(), "modules": sorted(set(visitor.imports))})
@@ -143,6 +156,8 @@ def analyze(root: str | Path) -> dict:
         else:
             external.append({"caller": caller, "expression": expression, "category": "external_or_builtin"})
 
+    alias_targets = {target for alias, target in aliases if target in by_id}
+
     # Constructors and AST NodeVisitor dispatch are indirectly invoked.
     for item in functions:
         if item["name"] == "__init__":
@@ -183,7 +198,8 @@ def analyze(root: str | Path) -> dict:
         item["entrypoint_candidate"] = item["id"] in roots
         item["reachable_from_known_entrypoint"] = item["id"] in reachable
         item["orphan_candidate"] = (incoming[item["id"]] == 0 and item["id"] not in roots
-                                   and item["name"] not in {"__init__", "_function"} )
+                                   and item["name"] != "__init__"
+                                   and item["id"] not in alias_targets)
 
     return {
         "root": str(root),
@@ -192,12 +208,13 @@ def analyze(root: str | Path) -> dict:
             "resolved_calls": len(edges), "unresolved_calls": len(unresolved),
             "external_or_builtin_calls": len(external),
             "orphan_candidates": sum(f["orphan_candidate"] for f in functions),
+            "aliased_functions": len(alias_targets),
             "reachable_from_known_entrypoints": len(reachable),
         },
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
         "unresolved_calls": unresolved, "external_calls": external,
-        "imports": imports, "errors": errors,
+        "imports": imports, "aliases": [{"alias": a, "target": b} for a, b in aliases], "errors": errors,
         "limitations": [
             "Best-effort static Python analysis; no target code executed",
             "Dynamic calls, instance method dispatch and cross-module aliases may be unresolved",
