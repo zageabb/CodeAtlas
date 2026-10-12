@@ -31,3 +31,13 @@ def test_rejects_non_github_network_source():
         "/api/analyse", json={"source": "https://example.com/sample"}
     )
     assert response.status_code == 400
+
+
+def test_explorer_module_navigation_and_linked_dependencies():
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    assert 'id="project-tree"' in response.text
+    assert "function renderTree()" in response.text
+    assert "function fitGraph()" in response.text
+    assert "class:'relation'" in response.text
+    assert "activeModule=target.path" in response.text
