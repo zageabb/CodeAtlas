@@ -23,6 +23,8 @@ class _Scanner(ast.NodeVisitor):
         self.decorators: dict[str, list[str]] = {}
         self.classes: dict[str, list[str]] = {}
         self.aliases: list[tuple[str, str]] = []
+        self.class_docs: list[dict] = []
+        self.routes: list[dict] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         self.imports.extend(alias.name for alias in node.names)
@@ -32,6 +34,12 @@ class _Scanner(ast.NodeVisitor):
             self.imports.append("." * node.level + node.module)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.class_docs.append({
+            "id": ".".join([self.module, *self.stack, node.name]),
+            "name": node.name, "path": self.path, "line": node.lineno,
+            "docstring": ast.get_docstring(node) or "",
+            "bases": [ast.unparse(base) for base in node.bases],
+        })
         self.classes[".".join([self.module, *self.stack, node.name])] = [ast.unparse(base) for base in node.bases]
         self.stack.append(node.name)
         for statement in node.body:
@@ -60,6 +68,17 @@ class _Scanner(ast.NodeVisitor):
             "returns": ast.unparse(node.returns) if node.returns else None,
         })
         self.decorators[qualified] = decorators
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                continue
+            method = decorator.func.attr.upper()
+            if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+                continue
+            if not decorator.args or not isinstance(decorator.args[0], ast.Constant) or not isinstance(decorator.args[0].value, str):
+                continue
+            self.routes.append({"method": method, "route": decorator.args[0].value,
+                                "handler": qualified, "path": self.path, "line": node.lineno})
+
         self.stack.append(node.name)
         for statement in node.body:
             self.visit(statement)
@@ -137,6 +156,8 @@ def analyze(root: str | Path) -> dict:
     raw_calls: list[tuple[str, str]] = []
     imports: list[dict] = []
     modules: list[dict] = []
+    class_docs: list[dict] = []
+    api_routes: list[dict] = []
     classes: dict[str, list[str]] = {}
     aliases: list[tuple[str, str]] = []
     import_edges: set[tuple[str, str]] = set()
@@ -158,6 +179,8 @@ def analyze(root: str | Path) -> dict:
         visitor = _Scanner(_module_name(relative), relative.as_posix())
         visitor.visit(tree)
         classes.update(visitor.classes)
+        class_docs.extend(visitor.class_docs)
+        api_routes.extend(visitor.routes)
         aliases.extend(visitor.aliases)
         functions.extend(visitor.functions)
         raw_calls.extend(visitor.calls)
@@ -273,6 +296,10 @@ def analyze(root: str | Path) -> dict:
         module["called_modules"] = sorted({by_id[b]["path"] for a, b in edges
                                            if by_id[a]["path"] == module["path"] and by_id[b]["path"] != module["path"]})
 
+    for cls in class_docs:
+        cls["methods"] = sorted(item["id"] for item in functions
+                                if item["id"].startswith(cls["id"] + ".")
+                                and item["id"].count(".") == cls["id"].count(".") + 1)
     call_cycles = _cycles(edges)
     import_cycles = _cycles(import_edges)
 
@@ -280,6 +307,7 @@ def analyze(root: str | Path) -> dict:
         "root": str(root),
         "summary": {
             "python_files": files, "functions": len(functions), "internal_import_edges": len(import_edges),
+            "classes": len(class_docs), "api_routes": len(api_routes),
             "function_cycles": len(call_cycles), "module_import_cycles": len(import_cycles),
             "resolved_calls": len(edges), "unresolved_calls": len(unresolved),
             "external_or_builtin_calls": len(external),
@@ -290,6 +318,8 @@ def analyze(root: str | Path) -> dict:
         "function_cycles": call_cycles,
         "module_import_cycles": import_cycles,
         "modules": sorted(modules, key=lambda m: m["path"]),
+        "classes": sorted(class_docs, key=lambda c: c["id"]),
+        "api_routes": sorted(api_routes, key=lambda r: (r["route"], r["method"], r["handler"])),
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
         "unresolved_calls": unresolved, "external_calls": external,
