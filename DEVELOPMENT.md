@@ -1,7 +1,7 @@
 # CodeAtlas Development Plan
 
 ## Status
-**Milestone 2 — call-resolution improvements committed; CI and runtime verification pending.**
+**Milestone 2 — interactive graph and Markdown documentation interface implemented; CI/runtime verification pending.**
 
 ### Implemented
 - FastAPI minimal web UI and JSON endpoint
@@ -20,11 +20,18 @@
 - Self-scan should be repeated and compared with baseline (6 files, 14 functions, 7 resolved calls, 97 unresolved calls, 8 orphan candidates).
 - CI is not yet verified; local clone of GitHub repo was unavailable in the execution environment.
 
+### Milestone 2 visualisation progress (2026-10-12)
+- Introduced standalone interactive SVG function graph (no CDN dependency), including search, scope filters, pan/zoom and caller/callee details.
+- Added Documentation Centre function catalogue with source location and call metadata.
+- Added downloadable Markdown function catalogue and Mermaid call graph, alongside JSON export.
+- Packaged frontend HTML inside the Python distribution, with the FastAPI root serving this asset.
+- Added route/UI regression tests. Production hardening and CI verification remain pending.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
 - Distinguish unknown reachability from confirmed disconnected components
-- Integrate Cytoscape.js interactive graph; filtering/search/drill-down
+- Improve graph layout for large projects; evaluate Cytoscape.js once core layout usability is validated
 - Add scanned commit SHA, branch selection, caching, pagination and size/time limits
 - Formal threat model for symlinks, local-path access, clone isolation and credentials
 - Restrict/disable arbitrary local path scans for deployed web instances
