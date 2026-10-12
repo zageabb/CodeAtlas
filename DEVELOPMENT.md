@@ -36,6 +36,15 @@
 - JavaScript/browser interaction and GitHub CI remain to be verified in a live run.
 - Future: actual dependency-aware layout, function/source grouping and better handling of large graphs.
 
+### Hierarchical drill-down iteration (2026-10-12)
+- Added application/module/function architecture-level selector.
+- Application view aggregates direct function-call edges across source files.
+- Module view includes module functions plus directly connected external-module functions.
+- Function view focuses on one selected function and its immediate callers and callees.
+- Module nodes drill into the selected module; function nodes drill into dependencies.
+- Added interface regression checks; live browser and CI verification still required.
+- Next: true directed graph layout, multi-hop depth controls, import-based dependency edges, GitHub source hyperlinks and a confidence model.
+
 ### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
