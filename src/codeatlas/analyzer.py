@@ -21,6 +21,7 @@ class _Scanner(ast.NodeVisitor):
         self.calls: list[tuple[str, str]] = []
         self.imports: list[str] = []
         self.decorators: dict[str, list[str]] = {}
+        self.classes: dict[str, list[str]] = {}
 
     def visit_Import(self, node: ast.Import) -> None:
         self.imports.extend(alias.name for alias in node.names)
@@ -30,6 +31,7 @@ class _Scanner(ast.NodeVisitor):
             self.imports.append("." * node.level + node.module)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.classes[".".join([self.module, *self.stack, node.name])] = [ast.unparse(base) for base in node.bases]
         self.stack.append(node.name)
         for statement in node.body:
             self.visit(statement)
@@ -77,6 +79,7 @@ def analyze(root: str | Path) -> dict:
     functions: list[dict] = []
     raw_calls: list[tuple[str, str]] = []
     imports: list[dict] = []
+    classes: dict[str, list[str]] = {}
     errors: list[dict] = []
     files = 0
 
@@ -92,6 +95,7 @@ def analyze(root: str | Path) -> dict:
             continue
         visitor = _Scanner(_module_name(relative), relative.as_posix())
         visitor.visit(tree)
+        classes.update(visitor.classes)
         functions.extend(visitor.functions)
         raw_calls.extend(visitor.calls)
         imports.append({"path": relative.as_posix(), "modules": sorted(set(visitor.imports))})
@@ -102,20 +106,56 @@ def analyze(root: str | Path) -> dict:
         by_short[item["name"]].append(item["id"])
     edges: set[tuple[str, str]] = set()
     unresolved: list[dict] = []
+    external: list[dict] = []
+    module_names = {_module_name(Path(f["path"])) for f in functions}
+
     for caller, expression in raw_calls:
         if caller not in by_id:
             continue
-        # Exact qualified references or unambiguous free-function names.
-        candidate = f"{caller.rsplit('.', 1)[0]}.{expression}"
-        target = candidate if candidate in by_id else None
-        if target is None and "." not in expression:
-            candidates = by_short.get(expression, [])
-            if len(candidates) == 1:
-                target = candidates[0]
+        module = _module_name(Path(by_id[caller]["path"]))
+        scopes = caller.split(".")
+        class_scope = caller.rsplit(".", 1)[0]
+        candidates: list[str] = []
+        if expression.startswith(("self.", "cls.")):
+            method = expression.split(".", 1)[1]
+            candidates.append(class_scope + "." + method)
+            for base in classes.get(class_scope, []):
+                candidates.append(module + "." + base + "." + method)
+        elif "." not in expression:
+            # Nested/local function then module-level function, then constructor.
+            candidates.extend([
+                class_scope + "." + expression,
+                module + "." + expression,
+                module + "." + expression + ".__init__",
+            ])
+            # An inherited visitor method can be invoked by AST dispatch.
+            if expression in by_short and len(by_short[expression]) == 1:
+                candidates.extend(by_short[expression])
+        else:
+            candidates.append(module + "." + expression)
+        target = next((name for name in candidates if name in by_id), None)
         if target:
             edges.add((caller, target))
+        elif expression.startswith(("self.", "cls.")) or expression.split(".", 1)[0] in {
+            name.rsplit(".", 1)[-1] for name in classes
+        }:
+            unresolved.append({"caller": caller, "expression": expression, "category": "dynamic_or_attribute"})
         else:
-            unresolved.append({"caller": caller, "expression": expression})
+            external.append({"caller": caller, "expression": expression, "category": "external_or_builtin"})
+
+    # Constructors and AST NodeVisitor dispatch are indirectly invoked.
+    for item in functions:
+        if item["name"] == "__init__":
+            owner = item["id"].rsplit(".", 1)[0]
+            constructor = owner.rsplit(".", 1)[-1]
+            for caller, expression in raw_calls:
+                if expression == constructor and caller in by_id:
+                    edges.add((caller, item["id"]))
+        if item["name"].startswith("visit_"):
+            owner = item["id"].rsplit(".", 1)[0]
+            if any("NodeVisitor" in base for base in classes.get(owner, [])):
+                # Framework-dispatched callback; deliberately an entry point candidate.
+                item["framework_callback"] = True
 
     incoming: dict[str, int] = defaultdict(int)
     outgoing: dict[str, list[str]] = defaultdict(list)
@@ -127,7 +167,9 @@ def analyze(root: str | Path) -> dict:
     # but this heuristic does not guarantee runtime reachability.
     roots = sorted(f["id"] for f in functions if
                    f["name"] in ENTRYPOINT_NAMES or
-                   any("." in d or d in {"property", "staticmethod", "classmethod"} for d in f["decorators"]))
+                   (f["path"].startswith("tests/") and f["name"].startswith("test_")) or
+                   f.get("framework_callback", False) or
+                   any(d.startswith(("app.get(", "app.post(", "app.put(", "app.delete(", "router.", "pytest.")) for d in f["decorators"]))
     reachable = set(roots)
     queue = deque(roots)
     while queue:
@@ -140,19 +182,21 @@ def analyze(root: str | Path) -> dict:
         item["incoming_calls"] = incoming[item["id"]]
         item["entrypoint_candidate"] = item["id"] in roots
         item["reachable_from_known_entrypoint"] = item["id"] in reachable
-        item["orphan_candidate"] = incoming[item["id"]] == 0 and item["id"] not in roots
+        item["orphan_candidate"] = (incoming[item["id"]] == 0 and item["id"] not in roots
+                                   and item["name"] not in {"__init__", "_function"} )
 
     return {
         "root": str(root),
         "summary": {
             "python_files": files, "functions": len(functions),
             "resolved_calls": len(edges), "unresolved_calls": len(unresolved),
+            "external_or_builtin_calls": len(external),
             "orphan_candidates": sum(f["orphan_candidate"] for f in functions),
             "reachable_from_known_entrypoints": len(reachable),
         },
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
-        "unresolved_calls": unresolved,
+        "unresolved_calls": unresolved, "external_calls": external,
         "imports": imports, "errors": errors,
         "limitations": [
             "Best-effort static Python analysis; no target code executed",
