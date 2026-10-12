@@ -112,3 +112,13 @@ def test_html_export_and_pinned_source_links():
     assert 'id="html-export"' in page
     assert "provenance?.commit_sha" in page
     assert "codeatlas-documentation.html" in page
+
+
+def test_exportable_architecture_report_sections():
+    page = TestClient(app).get("/").text
+    assert "function htmlReport(data)" in page
+    assert "Application architecture report" in page
+    assert "Module catalogue" in page
+    assert "API endpoints" in page
+    assert "Circular dependencies" in page
+    assert "@media print" in page
