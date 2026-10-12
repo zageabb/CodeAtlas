@@ -76,3 +76,23 @@ def test_internal_import_edges(tmp_path):
     report = analyze(tmp_path)
     assert {"source": "pkg/api.py", "target": "pkg/service.py", "type": "import"} in report["module_import_edges"]
     assert report["summary"]["internal_import_edges"] >= 1
+
+
+def test_call_cycle_detected(tmp_path):
+    (tmp_path / "cycles.py").write_text(
+        "def main():\n    a()\n"
+        "def a():\n    b()\n"
+        "def b():\n    a()\n",
+        encoding="utf-8",
+    )
+    report = analyze(tmp_path)
+    assert ["cycles.a", "cycles.b"] in report["function_cycles"]
+    assert report["summary"]["function_cycles"] == 1
+
+
+def test_module_import_cycle_detected(tmp_path):
+    (tmp_path / "a.py").write_text("import b\ndef run():\n    pass\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("import a\ndef run():\n    pass\n", encoding="utf-8")
+    report = analyze(tmp_path)
+    assert ["a.py", "b.py"] in report["module_import_cycles"]
+    assert report["summary"]["module_import_cycles"] == 1
