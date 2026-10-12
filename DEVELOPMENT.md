@@ -98,3 +98,11 @@ CI green and manual localhost smoke test before declaring milestone complete.
 - Expanded the searchable Documentation Centre and Markdown export with source-derived descriptions.
 - Added regression tests for metadata extraction and interface content.
 - Pending: CI/browser verification, scanned commit provenance, class/API catalogues, PDF export and documentation quality checks.
+
+### Class and API documentation iteration (2026-10-12)
+- Added class docstrings, base classes, source locations, and direct method inventories.
+- Identified literal HTTP route decorators for GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS, including FastAPI/Flask-style decorators.
+- Added searchable class catalogue and API route catalogue with handler navigation.
+- Added these sections to Markdown documentation export.
+- Limitations: dynamically generated routes, route prefixes, decorator aliases, nonliteral paths and runtime registration are not resolved.
+- Next: repository/commit provenance and robust Markdown/PDF/HTML export.
