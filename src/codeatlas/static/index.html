@@ -117,10 +117,12 @@ function displayModel(){
 function fitGraph(){
  if(!report)return;
  const count=displayModel().nodes.length;
- const width=$('graph').clientWidth||800,columns=Math.max(2,Math.floor(width/160));
- const rows=Math.max(1,Math.ceil(count/columns));
- scale=Math.max(.3,Math.min(1.2,(width-40)/(columns*160),500/(rows*110)));
- panX=0;panY=0;renderGraph();
+ const {nodes,edges}=displayModel(),positions=graphLayout(nodes,edges);
+ const xs=[...positions.values()].map(p=>p.x),ys=[...positions.values()].map(p=>p.y);
+ const minX=Math.min(...xs,0),maxX=Math.max(...xs,0),minY=Math.min(...ys,0),maxY=Math.max(...ys,0);
+ const width=$('graph').clientWidth||800,height=$('graph').clientHeight||550;
+ scale=Math.max(.15,Math.min(1.5,(width-70)/(maxX-minX+220),(height-70)/(maxY-minY+140)));
+ panX=width/2-(minX+maxX)/2*scale;panY=height/2-(minY+maxY)/2*scale;renderGraph();
 }
 function detail(f){
  selected=f.id;
@@ -151,19 +153,37 @@ function renderDocs(){
  }
 }
 $('docfilter').addEventListener('input',renderDocs);
+function graphLayout(nodes,edges){
+ const byId=new Map(nodes.map(n=>[n.id,n])),incoming=new Map(nodes.map(n=>[n.id,0]));
+ const outbound=new Map(nodes.map(n=>[n.id,[]]));
+ for(const e of edges){if(byId.has(e.source)&&byId.has(e.target)&&e.source!==e.target){outbound.get(e.source).push(e.target);incoming.set(e.target,incoming.get(e.target)+1)}}
+ // Kahn-style layering with cycle fallback: edge direction points from caller to dependency.
+ const depth=new Map(),pending=[...nodes.filter(n=>!incoming.get(n.id)).map(n=>n.id)].sort();
+ for(const id of pending)depth.set(id,0);
+ let cursor=0;
+ while(cursor<pending.length){const id=pending[cursor++];for(const dest of outbound.get(id)){incoming.set(dest,incoming.get(dest)-1);depth.set(dest,Math.max(depth.get(dest)||0,(depth.get(id)||0)+1));if(!incoming.get(dest))pending.push(dest)}}
+ for(const n of nodes)if(!depth.has(n.id))depth.set(n.id,0);
+ const grouped=new Map();
+ for(const n of nodes){let layer=depth.get(n.id)||0;if(n.path.startsWith('tests/')&&n.kind==='module')layer=-1;if(!grouped.has(layer))grouped.set(layer,[]);grouped.get(layer).push(n)}
+ const positions=new Map();
+ for(const [layer,items] of [...grouped].sort((a,b)=>a[0]-b[0])){
+ items.sort((a,b)=>a.id.localeCompare(b.id));items.forEach((n,i)=>positions.set(n.id,{x:115+(layer+1)*220,y:85+i*118}));
+ }
+ return positions;
+}
 function renderGraph(){
  const svg=$('graph');svg.replaceChildren();if(!report)return;
  const ns='http://www.w3.org/2000/svg';const make=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,String(v));return n};
  const {nodes,edges}=displayModel();
  const width=Math.max(400,svg.clientWidth||800),columns=Math.max(2,Math.floor(width/170));
- const positions=new Map(nodes.map((f,i)=>[f.id,{x:100+(i%columns)*160,y:65+Math.floor(i/columns)*110}]));
+ const positions=graphLayout(nodes,edges);
  const viewport=make('g',{transform:'translate('+panX+','+panY+') scale('+scale+')'});svg.append(viewport);
  const defs=make('defs'),marker=make('marker',{id:'arrow',markerWidth:8,markerHeight:8,refX:7,refY:3,orient:'auto'}),head=make('path',{d:'M0 0 L6 3 L0 6',fill:'none',stroke:'#63839a'});marker.append(head);defs.append(marker);svg.append(defs);
- for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);viewport.append(make('path',{class:'edge',d:'M'+a.x+' '+a.y+' L'+b.x+' '+b.y,'marker-end':'url(#arrow)'}))}
+ for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);if(!a||!b)continue;const offset=nodes.find(n=>n.id===edge.source)?.kind==='module'?85:27;const start=a.x+offset;const finish=b.x-(nodes.find(n=>n.id===edge.target)?.kind==='module'?85:27);const d='M'+start+' '+a.y+' C'+(start+finish)/2+' '+a.y+' '+(start+finish)/2+' '+b.y+' '+finish+' '+b.y;viewport.append(make('path',{class:'edge',d,'marker-end':'url(#arrow)',opacity:selected&&edge.source!==selected&&edge.target!==selected?'.15':'1'}))}
  for(const f of nodes){
  const p=positions.get(f.id),g=make('g',{class:'node'+(selected===f.id?' active':''),transform:'translate('+p.x+','+p.y+')',tabindex:0,role:'button','aria-label':f.id});
- g.append(make('circle',{r:26,fill:f.kind==='module'?'#725d9b':f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}));
- const txt=make('text',{'text-anchor':'middle',y:42});txt.textContent=f.name.length>21?f.name.slice(0,19)+'…':f.name;g.append(txt);
+ if(f.kind==='module'){g.append(make('rect',{x:-85,y:-30,width:170,height:60,rx:9,fill:f.path.startsWith('tests/')?'#454b6c':'#725d9b'}));}else{g.append(make('circle',{r:26,fill:f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}))}
+ const txt=make('text',{'text-anchor':'middle',y:f.kind==='module'?0:42});txt.textContent=f.name.length>21?f.name.slice(0,19)+'…':f.name;g.append(txt);if(f.kind==='module'){const count=make('text',{'text-anchor':'middle',y:17,fill:'#d5dbe8'});count.textContent=f.size+' functions';g.append(count)}
  const activate=()=>{if(f.kind==='module'){activeModule=f.path;$('level').value='module';renderTree();fitGraph()}else{if($('level').value==='function'){selected=f.id;detail(f);fitGraph()}else{activeModule=f.path;$('level').value='function';renderTree();detail(f);fitGraph()}}};g.addEventListener('click',activate);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate()}});
  viewport.append(g);
  }
