@@ -118,4 +118,4 @@ def test_class_and_http_route_documentation(tmp_path):
     classes = {c["name"]: c for c in report["classes"]}
     assert classes["Handler"]["docstring"] == "Handles items."
     assert "api.Handler.perform" in classes["Handler"]["methods"]
-    assert {"method": "GET", "route": "/items", "handler": "api.list_items", "path": "api.py", "line": 8} in report["api_routes"]
+    assert {"method": "GET", "route": "/items", "handler": "api.list_items", "path": "api.py", "line": 10} in report["api_routes"]
