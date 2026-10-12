@@ -31,7 +31,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <header><h1>◈ CodeAtlas</h1><span style="color:#9fb7ca">Architecture Explorer · v0.2</span></header>
 <main>
 <form class="scan" id="scan"><input id="source" required aria-label="Source folder or repository URL" placeholder="Local folder or https://github.com/owner/repo">
-<button id="go">Analyse code</button><button type="button" class="secondary" id="json" disabled>Export JSON</button><button type="button" class="secondary" id="markdown" disabled>Export documentation</button></form>
+<button id="go">Analyse code</button><button type="button" class="secondary" id="json" disabled>Export JSON</button><button type="button" class="secondary" id="markdown" disabled>Export documentation</button><button type="button" class="secondary" id="html-export" disabled>Export HTML</button></form>
 <p id="status" role="status">Enter a source to generate its architecture map.</p>
 <section id="stats" class="statrow" aria-label="Analysis summary"></section>
 <div class="tabs" role="tablist">
@@ -147,9 +147,9 @@ function fitGraph(){
  panX=width/2-(minX+maxX)/2*scale;panY=height/2-(minY+maxY)/2*scale;renderGraph();
 }
 function sourceUrl(path,line){
- const value=$('source').value.trim();const match=/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\.git)?\/?$/.exec(value);
- if(!match)return null;
- return 'https://github.com/'+match[1]+'/'+match[2].replace(/\.git$/,'')+'/blob/main/'+path.split('/').map(encodeURIComponent).join('/')+(line?'#L'+line:'');
+ const provenance=report?.provenance;
+ if(!provenance?.repository_url||!provenance?.commit_sha)return null;
+ return provenance.repository_url+'/blob/'+provenance.commit_sha+'/'+path.split('/').map(encodeURIComponent).join('/')+(line?'#L'+line:'');
 }
 function detail(f){
  selected=f.id;
@@ -237,6 +237,12 @@ $('graph').addEventListener('pointermove',e=>{if(!dragging)return;panX=e.clientX
 $('graph').addEventListener('pointerup',()=>dragging=false);
 $('json').addEventListener('click',()=>{if(report)download('codeatlas-report.json',JSON.stringify(report,null,2),'application/json')});
 $('markdown').addEventListener('click',()=>{if(report)download('codeatlas-documentation.md',md(report),'text/markdown')});
+$('html-export').addEventListener('click',()=>{
+ if(!report)return;
+ const escaped=JSON.stringify(report,null,2).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+ const documentHtml='<!doctype html><html lang="en"><meta charset="utf-8"><title>CodeAtlas analysis</title><style>body{font:14px system-ui;max-width:1100px;margin:40px auto;padding:0 20px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f7;padding:20px;border-radius:8px}</style><h1>CodeAtlas analysis</h1><p>Read-only static source report. Findings are candidates for review.</p><pre>'+escaped+'</pre></html>';
+ download('codeatlas-documentation.html',documentHtml,'text/html');
+});
 $('scan').addEventListener('submit',async event=>{
  event.preventDefault();const b=$('go');b.disabled=true;$('status').textContent='Analysing source…';
  try{
@@ -245,7 +251,7 @@ $('scan').addEventListener('submit',async event=>{
  report=data;selected=null;activeModule=null;$('level').value='application';scale=1;panX=0;panY=0;
  $('status').textContent='Analysis completed · '+(data.functions||[]).length+' functions available.';
  $('stats').replaceChildren(...Object.entries(data.summary||{}).map(([k,v])=>{const item=el('div',{class:'stat'});item.append(el('strong',{},v),el('small',{},k.replaceAll('_',' ')));return item}));
- $('raw').textContent=JSON.stringify(data,null,2);$('json').disabled=false;$('markdown').disabled=false;
+ $('raw').textContent=JSON.stringify(data,null,2);$('json').disabled=false;$('markdown').disabled=false;$('html-export').disabled=false;
  renderDocs();renderTree();fitGraph();showTab('map');
  }catch(error){$('status').textContent='Analysis failed: '+error.message}
  finally{b.disabled=false}
