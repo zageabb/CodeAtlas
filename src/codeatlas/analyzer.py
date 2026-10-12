@@ -83,6 +83,49 @@ def _module_name(relative: Path) -> str:
     return ".".join(pieces) or "__init__"
 
 
+
+def _cycles(edges: set[tuple[str, str]]) -> list[list[str]]:
+    """Return cyclic strongly-connected components, including self-loops."""
+    graph: dict[str, set[str]] = defaultdict(set)
+    for source, target in edges:
+        graph[source].add(target)
+        graph.setdefault(target, set())
+    index = 0
+    indices: dict[str, int] = {}
+    low: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    cycles: list[list[str]] = []
+
+    def visit(node: str) -> None:
+        nonlocal index
+        indices[node] = low[node] = index
+        index += 1
+        stack.append(node)
+        on_stack.add(node)
+        for target in sorted(graph[node]):
+            if target not in indices:
+                visit(target)
+                low[node] = min(low[node], low[target])
+            elif target in on_stack:
+                low[node] = min(low[node], indices[target])
+        if low[node] == indices[node]:
+            component: list[str] = []
+            while True:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == node:
+                    break
+            if len(component) > 1 or (node, node) in edges:
+                cycles.append(sorted(component))
+
+    for node in sorted(graph):
+        if node not in indices:
+            visit(node)
+    return sorted(cycles)
+
+
 def analyze(root: str | Path) -> dict:
     root = Path(root).expanduser().resolve()
     if not root.is_dir():
@@ -218,16 +261,22 @@ def analyze(root: str | Path) -> dict:
                                    and item["name"] != "__init__"
                                    and item["id"] not in alias_targets)
 
+    call_cycles = _cycles(edges)
+    import_cycles = _cycles(import_edges)
+
     return {
         "root": str(root),
         "summary": {
             "python_files": files, "functions": len(functions), "internal_import_edges": len(import_edges),
+            "function_cycles": len(call_cycles), "module_import_cycles": len(import_cycles),
             "resolved_calls": len(edges), "unresolved_calls": len(unresolved),
             "external_or_builtin_calls": len(external),
             "orphan_candidates": sum(f["orphan_candidate"] for f in functions),
             "aliased_functions": len(alias_targets),
             "reachable_from_known_entrypoints": len(reachable),
         },
+        "function_cycles": call_cycles,
+        "module_import_cycles": import_cycles,
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
         "unresolved_calls": unresolved, "external_calls": external,
