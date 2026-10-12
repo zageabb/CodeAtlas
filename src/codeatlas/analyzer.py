@@ -55,6 +55,9 @@ class _Scanner(ast.NodeVisitor):
             "id": qualified, "name": node.name, "path": self.path,
             "line": node.lineno, "async": isinstance(node, ast.AsyncFunctionDef),
             "decorators": decorators,
+            "docstring": ast.get_docstring(node) or "",
+            "parameters": [arg.arg for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)],
+            "returns": ast.unparse(node.returns) if node.returns else None,
         })
         self.decorators[qualified] = decorators
         self.stack.append(node.name)
@@ -133,6 +136,7 @@ def analyze(root: str | Path) -> dict:
     functions: list[dict] = []
     raw_calls: list[tuple[str, str]] = []
     imports: list[dict] = []
+    modules: list[dict] = []
     classes: dict[str, list[str]] = {}
     aliases: list[tuple[str, str]] = []
     import_edges: set[tuple[str, str]] = set()
@@ -149,6 +153,8 @@ def analyze(root: str | Path) -> dict:
         except (OSError, UnicodeError, SyntaxError) as exc:
             errors.append({"path": str(relative), "error": str(exc)})
             continue
+        modules.append({"path": relative.as_posix(), "name": _module_name(relative),
+                        "docstring": ast.get_docstring(tree) or ""})
         visitor = _Scanner(_module_name(relative), relative.as_posix())
         visitor.visit(tree)
         classes.update(visitor.classes)
@@ -261,6 +267,12 @@ def analyze(root: str | Path) -> dict:
                                    and item["name"] != "__init__"
                                    and item["id"] not in alias_targets)
 
+    for module in modules:
+        module["functions"] = sum(item["path"] == module["path"] for item in functions)
+        module["internal_imports"] = sorted(b for a, b in import_edges if a == module["path"])
+        module["called_modules"] = sorted({by_id[b]["path"] for a, b in edges
+                                           if by_id[a]["path"] == module["path"] and by_id[b]["path"] != module["path"]})
+
     call_cycles = _cycles(edges)
     import_cycles = _cycles(import_edges)
 
@@ -277,6 +289,7 @@ def analyze(root: str | Path) -> dict:
         },
         "function_cycles": call_cycles,
         "module_import_cycles": import_cycles,
+        "modules": sorted(modules, key=lambda m: m["path"]),
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
         "unresolved_calls": unresolved, "external_calls": external,
