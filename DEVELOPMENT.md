@@ -91,3 +91,10 @@
 
 ### Release rule
 CI green and manual localhost smoke test before declaring milestone complete.
+
+### Documentation Centre iteration (2026-10-12)
+- Extracted module docstrings, function docstrings, parameters, and return annotations using AST; no analysed code execution.
+- Added module dependency summaries and function counts to the API result.
+- Expanded the searchable Documentation Centre and Markdown export with source-derived descriptions.
+- Added regression tests for metadata extraction and interface content.
+- Pending: CI/browser verification, scanned commit provenance, class/API catalogues, PDF export and documentation quality checks.
