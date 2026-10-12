@@ -164,7 +164,7 @@ function renderGraph(){
  const p=positions.get(f.id),g=make('g',{class:'node'+(selected===f.id?' active':''),transform:'translate('+p.x+','+p.y+')',tabindex:0,role:'button','aria-label':f.id});
  g.append(make('circle',{r:26,fill:f.kind==='module'?'#725d9b':f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}));
  const txt=make('text',{'text-anchor':'middle',y:42});txt.textContent=f.name.length>21?f.name.slice(0,19)+'…':f.name;g.append(txt);
- const activate=()=>{if(f.kind==='module'){activeModule=f.path;$('level').value='module';renderTree();fitGraph()}else{if($('level').value==='function'){selected=f.id;detail(f);fitGraph()}else detail(f)}};g.addEventListener('click',activate);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate()}});
+ const activate=()=>{if(f.kind==='module'){activeModule=f.path;$('level').value='module';renderTree();fitGraph()}else{if($('level').value==='function'){selected=f.id;detail(f);fitGraph()}else{activeModule=f.path;$('level').value='function';renderTree();detail(f);fitGraph()}}};g.addEventListener('click',activate);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate()}});
  viewport.append(g);
  }
  if(!nodes.length){const t=make('text',{x:30,y:40,fill:'#a8bad0'});t.textContent='No functions match the current filter.';svg.append(t)}
