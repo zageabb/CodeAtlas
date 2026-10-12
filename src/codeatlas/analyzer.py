@@ -92,6 +92,7 @@ def analyze(root: str | Path) -> dict:
     imports: list[dict] = []
     classes: dict[str, list[str]] = {}
     aliases: list[tuple[str, str]] = []
+    import_edges: set[tuple[str, str]] = set()
     errors: list[dict] = []
     files = 0
 
@@ -113,6 +114,22 @@ def analyze(root: str | Path) -> dict:
         raw_calls.extend(visitor.calls)
         imports.append({"path": relative.as_posix(), "modules": sorted(set(visitor.imports))})
 
+    # Resolve only internal module imports, never treat third-party imports as internal.
+    module_paths = {_module_name(Path(entry["path"])): entry["path"] for entry in imports}
+    for entry in imports:
+        source_module = _module_name(Path(entry["path"]))
+        for name in entry["modules"]:
+            if name.startswith("."):
+                dots = len(name) - len(name.lstrip("."))
+                parts = source_module.split(".")
+                package = parts if entry["path"].endswith("__init__.py") else parts[:-1]
+                prefix = package[:max(0, len(package) - dots + 1)]
+                absolute = ".".join(prefix + ([name[dots:]] if name[dots:] else []))
+            else:
+                absolute = name
+            for candidate in (absolute,):
+                if candidate in module_paths and candidate != source_module:
+                    import_edges.add((entry["path"], module_paths[candidate]))
     by_id = {f["id"]: f for f in functions}
     by_short: dict[str, list[str]] = defaultdict(list)
     for item in functions:
@@ -204,7 +221,7 @@ def analyze(root: str | Path) -> dict:
     return {
         "root": str(root),
         "summary": {
-            "python_files": files, "functions": len(functions),
+            "python_files": files, "functions": len(functions), "internal_import_edges": len(import_edges),
             "resolved_calls": len(edges), "unresolved_calls": len(unresolved),
             "external_or_builtin_calls": len(external),
             "orphan_candidates": sum(f["orphan_candidate"] for f in functions),
@@ -214,7 +231,9 @@ def analyze(root: str | Path) -> dict:
         "functions": sorted(functions, key=lambda f: f["id"]),
         "calls": [{"source": a, "target": b} for a, b in sorted(edges)],
         "unresolved_calls": unresolved, "external_calls": external,
-        "imports": imports, "aliases": [{"alias": a, "target": b} for a, b in aliases], "errors": errors,
+        "imports": imports,
+        "module_import_edges": [{"source": a, "target": b, "type": "import"} for a, b in sorted(import_edges)],
+        "aliases": [{"alias": a, "target": b} for a, b in aliases], "errors": errors,
         "limitations": [
             "Best-effort static Python analysis; no target code executed",
             "Dynamic calls, instance method dispatch and cross-module aliases may be unresolved",
