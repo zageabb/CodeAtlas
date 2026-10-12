@@ -1,7 +1,7 @@
 # CodeAtlas Development Plan
 
 ## Status
-**Milestone 1 — initial scaffold implemented (pending CI verification).**
+**Milestone 2 — call-resolution improvements committed; CI and runtime verification pending.**
 
 ### Implemented
 - FastAPI minimal web UI and JSON endpoint
@@ -12,7 +12,15 @@
 - GitHub public HTTPS shallow-clone and local folder sources
 - JSON CLI export, pytest baseline and GitHub Actions workflow
 
-### Next: Milestone 2 — reliability and visualisation
+### Milestone 2 progress (2026-10-12)
+- Improved handling for local class methods, self/cls calls, constructors and NodeVisitor callbacks.
+- Added classification of external/builtin calls separately from ambiguous attribute calls.
+- Recognised pytest test functions and AST method aliases as externally referenced.
+- Added targeted regression tests for these cases.
+- Self-scan should be repeated and compared with baseline (6 files, 14 functions, 7 resolved calls, 97 unresolved calls, 8 orphan candidates).
+- CI is not yet verified; local clone of GitHub repo was unavailable in the execution environment.
+
+### Remaining: Milestone 2 — reliability and visualisation
 - Correctly model imports, `self.method()`, `cls.method()` and scoped names
 - Discover Flask/FastAPI routers, callbacks and background tasks
 - Distinguish unknown reachability from confirmed disconnected components
