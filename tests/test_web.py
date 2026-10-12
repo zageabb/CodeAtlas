@@ -56,3 +56,12 @@ def test_architecture_drilldown_controls():
     assert "level==='module'" in page
     assert "level==='function'" in page
     assert "activeModule=f.path" in page
+
+
+def test_dependency_layout_and_module_cards():
+    page = TestClient(app).get("/").text
+    assert "function graphLayout(nodes,edges)" in page
+    assert "Kahn-style layering" in page
+    assert "f.kind==='module'" in page
+    assert "f.path.startsWith('tests/')" in page
+    assert "make('rect'" in page
