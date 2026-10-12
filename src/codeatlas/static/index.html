@@ -99,7 +99,9 @@ function displayModel(){
   const files=[...new Set(functions.map(f=>f.path))].sort();
   const nodes=files.filter(p=>p.toLowerCase().includes(q)).map(path=>({id:path,name:path.split('/').pop(),path,kind:'module',size:functions.filter(f=>f.path===path).length}));
   const present=new Set(nodes.map(n=>n.id));
-  const edges=[...new Set(calls.map(e=>{const a=lookup.get(e.source),b=lookup.get(e.target);return a&&b&&a.path!==b.path?a.path+'|'+b.path:null}).filter(Boolean))].map(pair=>{const [source,target]=pair.split('|');return {source,target}}).filter(e=>present.has(e.source)&&present.has(e.target));
+  const moduleCalls=[...new Set(calls.map(e=>{const a=lookup.get(e.source),b=lookup.get(e.target);return a&&b&&a.path!==b.path?a.path+'|'+b.path:null}).filter(Boolean))].map(pair=>{const [source,target]=pair.split('|');return {source,target,type:'call'}});
+  const imports=(report.module_import_edges||[]).map(e=>({...e,type:'import'}));
+  const edges=[...moduleCalls,...imports].filter(e=>present.has(e.source)&&present.has(e.target));
   return {nodes,edges};
  }
  let nodes=functions.filter(f=>(level==='function' ? selected&&(f.id===selected||calls.some(e=>e.source===selected&&e.target===f.id||e.target===selected&&e.source===f.id)) : !activeModule||f.path===activeModule));
@@ -124,9 +126,15 @@ function fitGraph(){
  scale=Math.max(.15,Math.min(1.5,(width-70)/(maxX-minX+220),(height-70)/(maxY-minY+140)));
  panX=width/2-(minX+maxX)/2*scale;panY=height/2-(minY+maxY)/2*scale;renderGraph();
 }
+function sourceUrl(path,line){
+ const value=$('source').value.trim();const match=/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\.git)?\/?$/.exec(value);
+ if(!match)return null;
+ return 'https://github.com/'+match[1]+'/'+match[2].replace(/\.git$/,'')+'/blob/main/'+path.split('/').map(encodeURIComponent).join('/')+(line?'#L'+line:'');
+}
 function detail(f){
  selected=f.id;
  const d=$('detail');d.replaceChildren();
+ const source=sourceUrl(f.path,f.line);if(source){const link=el('a',{href:source,target:'_blank',rel:'noopener noreferrer'},'Open source on GitHub ↗');d.append(link)}
  d.append(el('h2',{},f.name));
  for(const [label,value] of [['Full identifier',f.id],['File',f.path+':'+f.line],['Async',String(Boolean(f.async))],['Direct incoming calls',f.incoming_calls],['Entry point candidate',String(Boolean(f.entrypoint_candidate))],['Orphan candidate',String(Boolean(f.orphan_candidate))],['Decorators',(f.decorators||[]).join(', ')||'None']]){
  const dt=el('dt',{},label),dd=el('dd',{},value);d.append(dt,dd);
@@ -179,7 +187,10 @@ function renderGraph(){
  const positions=graphLayout(nodes,edges);
  const viewport=make('g',{transform:'translate('+panX+','+panY+') scale('+scale+')'});svg.append(viewport);
  const defs=make('defs'),marker=make('marker',{id:'arrow',markerWidth:8,markerHeight:8,refX:7,refY:3,orient:'auto'}),head=make('path',{d:'M0 0 L6 3 L0 6',fill:'none',stroke:'#63839a'});marker.append(head);defs.append(marker);svg.append(defs);
- for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);if(!a||!b)continue;const offset=nodes.find(n=>n.id===edge.source)?.kind==='module'?85:27;const start=a.x+offset;const finish=b.x-(nodes.find(n=>n.id===edge.target)?.kind==='module'?85:27);const d='M'+start+' '+a.y+' C'+(start+finish)/2+' '+a.y+' '+(start+finish)/2+' '+b.y+' '+finish+' '+b.y;viewport.append(make('path',{class:'edge',d,'marker-end':'url(#arrow)',opacity:selected&&edge.source!==selected&&edge.target!==selected?'.15':'1'}))}
+ for(const edge of edges){const a=positions.get(edge.source),b=positions.get(edge.target);if(!a||!b)continue;const offset=nodes.find(n=>n.id===edge.source)?.kind==='module'?85:27;const start=a.x+offset;const finish=b.x-(nodes.find(n=>n.id===edge.target)?.kind==='module'?85:27);const d='M'+start+' '+a.y+' C'+(start+finish)/2+' '+a.y+' '+(start+finish)/2+' '+b.y+' '+finish+' '+b.y;
+ const focus=selected||activeModule;
+ const adjacent=!focus||edge.source===focus||edge.target===focus;
+ viewport.append(make('path',{class:'edge',d,'marker-end':'url(#arrow)',stroke:edge.type==='import'?'#d7ac63':edge.source===focus?'#45d9b4':edge.target===focus?'#77b7ff':'#63839a','stroke-dasharray':edge.type==='import'?'6 5':'none',opacity:adjacent?'1':'.16'}))}
  for(const f of nodes){
  const p=positions.get(f.id),g=make('g',{class:'node'+(selected===f.id?' active':''),transform:'translate('+p.x+','+p.y+')',tabindex:0,role:'button','aria-label':f.id});
  if(f.kind==='module'){g.append(make('rect',{x:-85,y:-30,width:170,height:60,rx:9,fill:f.path.startsWith('tests/')?'#454b6c':'#725d9b'}));}else{g.append(make('circle',{r:26,fill:f.orphan_candidate?'#a75050':f.entrypoint_candidate?'#327e72':'#345b84'}))}
