@@ -106,3 +106,12 @@ CI green and manual localhost smoke test before declaring milestone complete.
 - Added these sections to Markdown documentation export.
 - Limitations: dynamically generated routes, route prefixes, decorator aliases, nonliteral paths and runtime registration are not resolved.
 - Next: repository/commit provenance and robust Markdown/PDF/HTML export.
+
+### Source provenance and export iteration (2026-10-12)
+- The analysis API now returns provenance: source type, canonical GitHub repository URL, and git HEAD SHA when available.
+- GitHub function inspector hyperlinks use the scanned immutable commit instead of assuming the main branch.
+- Markdown export includes source provenance and commit information.
+- Added standalone HTML report export (escaped structured JSON for offline inspection); designed documentation layout is a later enhancement.
+- Added web regression tests for provenance and HTML controls.
+- Limitations: local uncommitted changes cannot be identified by git HEAD alone. Non-GitHub local scans intentionally have no remote-source link. ZIP upload, branch selector and HTML/PDF report styling remain outstanding.
+- Verification: commits pushed; automated CI status and local browser tests still pending.
