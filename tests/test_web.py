@@ -73,3 +73,11 @@ def test_import_edges_and_github_source_links_available():
     assert "function sourceUrl(path,line)" in page
     assert "Open source on GitHub" in page
     assert "edge.type==='import'" in page
+
+
+def test_multihop_tracing_and_cycle_documentation_ui():
+    page = TestClient(app).get("/").text
+    assert 'id="depth"' in page
+    assert "selectedNeighborhood=new Set([selected])" in page
+    assert "Module import cycles" in page
+    assert "Function call cycles" in page
