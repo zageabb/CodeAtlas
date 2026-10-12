@@ -97,3 +97,18 @@ def test_documentation_centre_class_and_route_sections():
     assert 'id="routes"' in page
     assert 'report.api_routes' in page
     assert 'report.classes' in page
+
+
+def test_provenance_present_for_local_scan(tmp_path):
+    (tmp_path / "example.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+    report = TestClient(app).post("/api/analyse", json={"source": str(tmp_path)}).json()
+    assert report["provenance"]["repository_url"] is None
+    assert report["provenance"]["immutable_source_links"] is False
+    assert report["provenance"]["source"] == "local directory"
+
+
+def test_html_export_and_pinned_source_links():
+    page = TestClient(app).get("/").text
+    assert 'id="html-export"' in page
+    assert "provenance?.commit_sha" in page
+    assert "codeatlas-documentation.html" in page
