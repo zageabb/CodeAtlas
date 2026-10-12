@@ -49,7 +49,7 @@ pre{max-height:430px;overflow:auto;font-size:12px}#status{min-height:20px}a{colo
 <div class="panel"><h2>Function details</h2><div id="detail">Select a function on the graph.</div></div>
 </section>
 <section id="view-docs" class="panel hide"><h2>Function catalogue</h2><p>Generated directly from parsed source. Documentation is evidence-based and does not infer function behaviour.</p>
-<input id="docfilter" placeholder="Search functions, paths or modules…" aria-label="Filter function catalogue"><h2>Modules</h2><div id="modules"></div><h2>Functions</h2><div id="functions"></div></section>
+<input id="docfilter" placeholder="Search functions, paths or modules…" aria-label="Filter function catalogue"><h2>Modules</h2><div id="modules"></div><h2>Classes</h2><div id="classes"></div><h2>API routes</h2><div id="routes"></div><h2>Functions</h2><div id="functions"></div></section>
 <section id="view-raw" class="panel hide"><h2>Structured analysis</h2><pre id="raw">No report yet.</pre></section>
 </main><script>
 'use strict';
@@ -60,6 +60,11 @@ function download(filename,content,type){const u=URL.createObjectURL(new Blob([c
 function md(report){
  let out='# CodeAtlas application documentation\n\nGenerated from static source analysis. Orphan candidates are not confirmed unused code.\n\n';
  out+='## Summary\n\n'+Object.entries(report.summary||{}).map(([k,v])=>'- '+k.replaceAll('_',' ')+': '+v).join('\n')+'\n\n';
+ out+='## Classes\\n\\n';
+ for(const cls of report.classes||[]){out+='### '+cls.id+'\\n\\n'+(cls.docstring||'No class docstring provided.')+'\\n\\n- Source: '+cls.path+':'+cls.line+'\\n- Bases: '+(cls.bases||[]).join(', ')+'\\n- Methods: '+(cls.methods||[]).join(', ')+'\\n\\n'}
+ out+='## API routes\\n\\n';
+ for(const route of report.api_routes||[]){out+='- '+route.method+' '+route.route+' → '+route.handler+' ('+route.path+':'+route.line+')\\n'}
+ out+='\\n';
  out+='## Function catalogue\n\n';
  for(const f of report.functions||[]){
  out+='### '+f.id+'\n\n- Source: \x60'+f.path+':'+f.line+'\x60\n- Incoming calls: '+f.incoming_calls+'\n- Entrypoint candidate: '+Boolean(f.entrypoint_candidate)+'\n- Orphan candidate: '+Boolean(f.orphan_candidate)+'\n';
@@ -167,10 +172,17 @@ function detail(f){
  renderGraph();
 }
 function renderDocs(){
- const host=$('functions'),moduleHost=$('modules');host.replaceChildren();moduleHost.replaceChildren();if(!report)return;
+ const host=$('functions'),moduleHost=$('modules'),classHost=$('classes'),routeHost=$('routes');
+ host.replaceChildren();moduleHost.replaceChildren();classHost.replaceChildren();routeHost.replaceChildren();if(!report)return;
  const q=$('docfilter').value.trim().toLowerCase();
  for(const m of report.modules||[]){if(!(m.path+' '+m.docstring).toLowerCase().includes(q))continue;
  const card=el('article',{class:'function'});card.append(el('h3',{},m.path),el('p',{},m.docstring||'No module docstring provided.'),el('small',{},m.functions+' functions'),el('small',{},'Imports: '+(m.internal_imports||[]).join(', ')));moduleHost.append(card)}
+ for(const cls of report.classes||[]){if(!(cls.id+' '+cls.docstring).toLowerCase().includes(q))continue;
+ const card=el('article',{class:'function'});card.append(el('h3',{},cls.id),el('p',{},cls.docstring||'No class docstring provided.'),el('small',{},'Methods: '+(cls.methods||[]).length+' · Bases: '+(cls.bases||[]).join(', ')));classHost.append(card)}
+ for(const route of report.api_routes||[]){if(!(route.method+' '+route.route+' '+route.handler).toLowerCase().includes(q))continue;
+ const card=el('article',{class:'function'}),button=el('button',{type:'button'},route.method+' '+route.route);
+ button.addEventListener('click',()=>{const fn=report.functions.find(f=>f.id===route.handler);if(fn){activeModule=fn.path;$('level').value='function';renderTree();showTab('map');detail(fn);fitGraph()}});
+ card.append(button,el('small',{},route.handler+' · '+route.path+':'+route.line));routeHost.append(card)}
  for(const f of report.functions.filter(f=>(f.id+' '+f.path).toLowerCase().includes(q))){
  const card=el('article',{class:'function'}),b=el('button',{},f.id);b.addEventListener('click',()=>{activeModule=f.path;$('level').value='function';renderTree();showTab('map');detail(f);fitGraph()});
  card.append(b,el('small',{},f.path+':'+f.line),el('p',{},f.docstring||'No docstring provided.'),el('small',{},'Parameters: '+(f.parameters||[]).join(', ')+' · Returns: '+(f.returns||'Not annotated')),el('small',{},'Callers: '+f.incoming_calls+' · '+(f.orphan_candidate?'Orphan candidate':f.entrypoint_candidate?'Entry point':'Internal function')));
