@@ -128,3 +128,11 @@ CI green and manual localhost smoke test before declaring milestone complete.
 - Added docstring coverage totals for modules and functions as review indicators, not correctness claims.
 - No external diagram service required. Printed HTML remains browser-printable to PDF.
 - Still pending: layout improvements for large module counts, real-browser verification, confirmed CI, and first-class server-side PDF output.
+
+### Scalable architecture report diagram (2026-10-13)
+- Reworked the exported HTML diagram to use dependency-oriented module layers rather than a fixed three-column grid.
+- SVG viewBox bounds now derive from actual module positions; export remains entirely offline and horizontally scrollable.
+- Duplicate relationships are consolidated before rendering; call links and import links remain visually differentiated.
+- Cycles receive fallback placement; robust strongly-connected component layout and collision-resistant edge routing remain future work.
+- Browser Print / Save as PDF remains the supported PDF workflow. Native PDF export has not yet been implemented.
+- Static regression checks added; runtime/browser and CI validation pending.
