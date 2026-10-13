@@ -130,3 +130,12 @@ def test_export_embeds_architecture_and_coverage():
     assert "Architecture diagram" in page
     assert "Documentation coverage" in page
     assert "Functions with docstrings" in page
+
+
+def test_scalable_exported_architecture_diagram():
+    page = TestClient(app).get("/").text
+    assert "function reportDiagram(data)" in page
+    assert "const positions=new Map(),gapX=238,gapY=92" in page
+    assert "Math.max(320" in page
+    assert "overflow-x:auto" in page
+    assert "Cyclic groups use fallback positioning" in page
