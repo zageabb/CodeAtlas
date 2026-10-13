@@ -122,3 +122,9 @@ CI green and manual localhost smoke test before declaring milestone complete.
 - Report escapes source-derived text and uses embedded CSS with print styling; no external CDN required.
 - Added regression assertions for report sections and print CSS.
 - Outstanding: visual dependency diagrams in export, automated browser validation, PDF-generation pipeline, class/route fidelity improvements and layout testing with large repositories.
+
+### Visual export and documentation coverage (2026-10-13)
+- The self-contained HTML export now includes an inline SVG module relationship overview, with separate styling for calls and imports.
+- Added docstring coverage totals for modules and functions as review indicators, not correctness claims.
+- No external diagram service required. Printed HTML remains browser-printable to PDF.
+- Still pending: layout improvements for large module counts, real-browser verification, confirmed CI, and first-class server-side PDF output.
