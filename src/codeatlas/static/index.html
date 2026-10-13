@@ -240,15 +240,28 @@ $('markdown').addEventListener('click',()=>{if(report)download('codeatlas-docume
 function reportDiagram(data){
  const esc=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
  const modules=data.modules||[],ids=new Set(modules.map(m=>m.path));
- const group=new Map(modules.map((m,i)=>[m.path,{x:25+(i%3)*240,y:35+Math.floor(i/3)*105}]));
- const count=Math.ceil(modules.length/3),height=Math.max(130,count*105+30);
- const functions=new Map((data.functions||[]).map(f=>[f.id,f.path]));
- const direct=(data.calls||[]).map(e=>({source:functions.get(e.source),target:functions.get(e.target)})).filter(e=>e.source&&e.target&&e.source!==e.target);
- const imports=(data.module_import_edges||[]).map(e=>({source:e.source,target:e.target,import:true}));
- const edges=[...direct,...imports].filter(e=>ids.has(e.source)&&ids.has(e.target));
- const lines=edges.map(e=>{const a=group.get(e.source),b=group.get(e.target);return '<path d="M'+(a.x+90)+' '+(a.y+26)+' L'+(b.x+90)+' '+(b.y+26)+'" stroke="'+(e.import?'#ba7e2e':'#32778c')+'" stroke-width="2" stroke-dasharray="'+(e.import?'5 4':'none')+'" fill="none" opacity=".65"/>'}).join('');
- const cards=modules.map(m=>{const p=group.get(m.path);return '<g><rect x="'+p.x+'" y="'+p.y+'" width="180" height="54" rx="8" fill="'+(m.path.startsWith('tests/')?'#566378':'#244c68')+'"/><text x="'+(p.x+90)+'" y="'+(p.y+21)+'" font-size="12" fill="white" text-anchor="middle">'+esc(m.path.split('/').pop().slice(0,27))+'</text><text x="'+(p.x+90)+'" y="'+(p.y+39)+'" font-size="10" fill="#d9e8f0" text-anchor="middle">'+Number(m.functions||0)+' functions</text></g>'}).join('');
- return modules.length?'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 '+height+'" role="img" aria-label="Module dependency overview" style="width:100%;height:auto;background:#f1f5f9;border-radius:8px">'+lines+cards+'</svg><p>Solid: resolved cross-module calls · Dashed: imports. Static relationships only.</p>':'<p>No parsed modules available.</p>';
+ if(!modules.length)return '<p>No parsed modules available.</p>';
+ const funcs=new Map((data.functions||[]).map(f=>[f.id,f.path]));
+ const relationships=[...(data.calls||[]).map(e=>({source:funcs.get(e.source),target:funcs.get(e.target),type:'call'})),...(data.module_import_edges||[]).map(e=>({...e,type:'import'}))].filter(e=>ids.has(e.source)&&ids.has(e.target)&&e.source!==e.target);
+ const adjacency=new Map(modules.map(m=>[m.path,new Set()]));
+ for(const e of relationships)adjacency.get(e.source).add(e.target);
+ // Spread strongly linked modules across layers while keeping this entirely offline.
+ const indegree=new Map(modules.map(m=>[m.path,0]));
+ for(const destinations of adjacency.values())for(const dest of destinations)indegree.set(dest,indegree.get(dest)+1);
+ const layers=new Map(),queue=[...indegree].filter(([,degree])=>degree===0).map(([id])=>id).sort();
+ for(const id of queue)layers.set(id,0);
+ for(let at=0;at<queue.length;at++){const id=queue[at];for(const dest of adjacency.get(id)){indegree.set(dest,indegree.get(dest)-1);layers.set(dest,Math.max(layers.get(dest)||0,(layers.get(id)||0)+1));if(indegree.get(dest)===0)queue.push(dest)}}
+ // Cycles may remain after the topological pass; assign those modules to a fallback lane.
+ for(const m of modules)if(!layers.has(m.path))layers.set(m.path,0);
+ const lanes=new Map();
+ for(const m of modules){const layer=layers.get(m.path);if(!lanes.has(layer))lanes.set(layer,[]);lanes.get(layer).push(m)}
+ const positions=new Map(),gapX=238,gapY=92;
+ for(const [layer,items] of lanes){items.sort((a,b)=>a.path.localeCompare(b.path));items.forEach((m,i)=>positions.set(m.path,{x:18+layer*gapX,y:30+i*gapY}))}
+ const width=Math.max(320,...[...positions.values()].map(p=>p.x+200)),height=Math.max(125,...[...positions.values()].map(p=>p.y+75));
+ const unique=[...new Map(relationships.map(e=>[e.source+'|'+e.target+'|'+e.type,e])).values()];
+ const lines=unique.map(e=>{const a=positions.get(e.source),b=positions.get(e.target);const x1=a.x+90,y1=a.y+27,x2=b.x+90,y2=b.y+27;return '<path d="M'+x1+' '+y1+' C'+(x1+x2)/2+' '+y1+' '+(x1+x2)/2+' '+y2+' '+x2+' '+y2+'" stroke="'+(e.type==='import'?'#ba7e2e':'#32778c')+'" stroke-width="2" stroke-dasharray="'+(e.type==='import'?'5 4':'none')+'" fill="none" opacity=".55"/>'}).join('');
+ const cards=modules.map(m=>{const p=positions.get(m.path);return '<g><rect x="'+p.x+'" y="'+p.y+'" width="180" height="54" rx="8" fill="'+(m.path.startsWith('tests/')?'#566378':'#244c68')+'"/><text x="'+(p.x+90)+'" y="'+(p.y+21)+'" font-size="12" fill="white" text-anchor="middle">'+esc(m.path.split('/').pop().slice(0,27))+'</text><text x="'+(p.x+90)+'" y="'+(p.y+39)+'" font-size="10" fill="#d9e8f0" text-anchor="middle">'+Number(m.functions||0)+' functions</text></g>'}).join('');
+ return '<div style="overflow-x:auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+width+' '+height+'" role="img" aria-label="Module dependency overview" style="width:100%;min-width:520px;height:auto;background:#f1f5f9;border-radius:8px">'+lines+cards+'</svg></div><p>Solid: resolved cross-module calls · Dashed: imports. Cyclic groups use fallback positioning.</p>';
 }
 function htmlReport(data){
  const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
