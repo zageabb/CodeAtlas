@@ -122,3 +122,11 @@ def test_exportable_architecture_report_sections():
     assert "API endpoints" in page
     assert "Circular dependencies" in page
     assert "@media print" in page
+
+
+def test_export_embeds_architecture_and_coverage():
+    page = TestClient(app).get("/").text
+    assert "function reportDiagram(data)" in page
+    assert "Architecture diagram" in page
+    assert "Documentation coverage" in page
+    assert "Functions with docstrings" in page
